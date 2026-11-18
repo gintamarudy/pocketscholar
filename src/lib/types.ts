@@ -61,3 +61,21 @@ export interface HybridStatus {
   firebaseConfigured: boolean;
   online: boolean;
 }
+
+/** Firestore sync state for one browser (local-first, best-effort mirror). */
+export type SyncState = 'local-only' | 'offline' | 'syncing' | 'synced' | 'error';
+
+export function describeSyncState(state: SyncState): string {
+  switch (state) {
+    case 'local-only':
+      return 'Local only — Firebase not configured';
+    case 'offline':
+      return 'Offline — changes saved locally, will sync when online';
+    case 'syncing':
+      return 'Syncing to Firestore…';
+    case 'synced':
+      return 'Synced to Firestore';
+    case 'error':
+      return 'Sync failed — saved locally';
+  }
+}

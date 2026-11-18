@@ -8,9 +8,8 @@ import {
 
 // src/lib/firebase.ts
 import { initializeApp } from "firebase/app";
-import "firebase/app-check";
-import { getFirestore } from "firebase/firestore";
-import { getAI, GoogleAIBackend } from "firebase/ai";
+
+// src/lib/firebase-config.ts
 function readConfig() {
   const cfg = {
     apiKey: "",
@@ -26,14 +25,20 @@ function readConfig() {
 function isFirebaseConfigured() {
   return readConfig() !== null;
 }
+function getFirebaseConfig() {
+  return readConfig();
+}
+
+// src/lib/firebase.ts
 var app = null;
 var ai = null;
 var appCheckReady = false;
-function getFirebaseApp() {
+async function getFirebaseApp() {
   if (app) return app;
-  const cfg = readConfig();
+  const cfg = getFirebaseConfig();
   if (!cfg) return null;
   app = initializeApp(cfg);
+  const { initializeAppCheck, CustomProvider, ReCaptchaV3Provider } = await import("firebase/app-check");
   if (false) {
     self.FIREBASE_APPCHECK_DEBUG_TOKEN = true;
     initializeAppCheck(app, {
@@ -51,18 +56,17 @@ function getFirebaseApp() {
   appCheckReady = true;
   return app;
 }
-function getAIClient() {
+async function getAIClient() {
   if (ai) return ai;
-  const firebaseApp = getFirebaseApp();
+  const firebaseApp = await getFirebaseApp();
   if (!firebaseApp) return null;
+  const { getAI, GoogleAIBackend } = await import("firebase/ai");
   ai = getAI(firebaseApp, { backend: new GoogleAIBackend() });
   return ai;
 }
 
-// src/lib/ai.ts
-var CLOUD_MODEL = "gemini-3.5-flash-lite";
+// src/lib/nano.ts
 var ON_DEVICE_CHAR_LIMIT = 6e3;
-var CLOUD_CHAR_LIMIT = 12e4;
 function getLanguageModel() {
   const lm = window.LanguageModel;
   if (!lm || typeof lm.availability !== "function") return null;
@@ -81,6 +85,10 @@ async function checkNanoAvailability() {
     return "unavailable";
   }
 }
+
+// src/lib/ai.ts
+var CLOUD_MODEL = "gemini-3.5-flash-lite";
+var CLOUD_CHAR_LIMIT = 12e4;
 var studyPackSchema = Schema.object({
   properties: {
     summary: Schema.string({
@@ -276,7 +284,7 @@ async function generateStudyPack(noteText, opts = {}) {
       generatedAt: Date.now()
     };
   }
-  const ai2 = getAIClient();
+  const ai2 = await getAIClient();
   if (!ai2) throw new Error("Firebase AI Logic is unavailable (no Firebase config).");
   opts.onProgress?.({ phase: "checking" });
   const nano = await checkNanoAvailability();

@@ -9,40 +9,17 @@
 //
 // AppCheck: the AI Logic guided setup enforces App Check. For local dev we
 // use the debug provider (see SETUP.md for how to register the debug token).
+//
+// Code-splitting: only `firebase/app` is imported statically. The heavy
+// SDKs — `firebase/ai`, `firebase/firestore`, `firebase/app-check` — are
+// loaded with dynamic import() on first use, so the initial bundle stays
+// under Vite's 500 KB chunk warning. All three getters below are therefore
+// async; callers (generateStudyPack, sync) already run in async contexts.
 
 import { initializeApp, type FirebaseApp } from 'firebase/app';
-import { initializeAppCheck, CustomProvider, ReCaptchaV3Provider } from 'firebase/app-check';
-import { getFirestore, type Firestore } from 'firebase/firestore';
-import { getAI, GoogleAIBackend, type AI } from 'firebase/ai';
-
-export interface FirebaseConfig {
-  apiKey: string;
-  authDomain: string;
-  projectId: string;
-  storageBucket: string;
-  messagingSenderId: string;
-  appId: string;
-}
-
-function readConfig(): FirebaseConfig | null {
-  const cfg: FirebaseConfig = {
-    apiKey: import.meta.env.VITE_FIREBASE_API_KEY ?? '',
-    authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN ?? '',
-    projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID ?? '',
-    storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET ?? '',
-    messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID ?? '',
-    appId: import.meta.env.VITE_FIREBASE_APP_ID ?? '',
-  };
-  // All six fields are required for a usable config; a partial config is
-  // treated as "not configured" so the app never half-initializes Firebase.
-  const complete = Object.values(cfg).every((v) => typeof v === 'string' && v.length > 0);
-  return complete ? cfg : null;
-}
-
-/** True when a complete Firebase web config is present in the environment. */
-export function isFirebaseConfigured(): boolean {
-  return readConfig() !== null;
-}
+import { getFirebaseConfig } from './firebase-config';
+import type { AI } from 'firebase/ai';
+import type { Firestore } from 'firebase/firestore';
 
 let app: FirebaseApp | null = null;
 let ai: AI | null = null;
@@ -50,9 +27,9 @@ let firestore: Firestore | null = null;
 let appCheckReady = false;
 
 /** Lazily initialize the Firebase app. Returns null when not configured. */
-export function getFirebaseApp(): FirebaseApp | null {
+export async function getFirebaseApp(): Promise<FirebaseApp | null> {
   if (app) return app;
-  const cfg = readConfig();
+  const cfg = getFirebaseConfig();
   if (!cfg) return null;
   app = initializeApp(cfg);
 
@@ -65,6 +42,9 @@ export function getFirebaseApp(): FirebaseApp | null {
   // instead — set VITE_RECAPTCHA_SITE_KEY in .env for the deployed site.
   // (AppCheckOptions requires a provider, hence the CustomProvider
   // placeholder in dev; it is never called while debug mode is enabled.)
+  const { initializeAppCheck, CustomProvider, ReCaptchaV3Provider } = await import(
+    'firebase/app-check'
+  );
   if (import.meta.env.DEV) {
     (self as unknown as Record<string, unknown>).FIREBASE_APPCHECK_DEBUG_TOKEN = true;
     initializeAppCheck(app, {
@@ -92,19 +72,21 @@ export function isAppCheckReady(): boolean {
  * The Firebase AI Logic client (Gemini Developer API backend — free tier,
  * no billing required). Returns null when Firebase is not configured.
  */
-export function getAIClient(): AI | null {
+export async function getAIClient(): Promise<AI | null> {
   if (ai) return ai;
-  const firebaseApp = getFirebaseApp();
+  const firebaseApp = await getFirebaseApp();
   if (!firebaseApp) return null;
+  const { getAI, GoogleAIBackend } = await import('firebase/ai');
   ai = getAI(firebaseApp, { backend: new GoogleAIBackend() });
   return ai;
 }
 
 /** Firestore client for note sync. Returns null when Firebase is not configured. */
-export function getFirestoreClient(): Firestore | null {
+export async function getFirestoreClient(): Promise<Firestore | null> {
   if (firestore) return firestore;
-  const firebaseApp = getFirebaseApp();
+  const firebaseApp = await getFirebaseApp();
   if (!firebaseApp) return null;
+  const { getFirestore } = await import('firebase/firestore');
   firestore = getFirestore(firebaseApp);
   return firestore;
 }

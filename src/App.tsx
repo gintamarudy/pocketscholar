@@ -1,7 +1,7 @@
 // PocketScholar — offline-first AI study notes.
 // Library + editor (IndexedDB) on the left, AI study pack on the right.
 // All UI text is in English.
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   deleteNote,
   getNote,
@@ -11,17 +11,17 @@ import {
   saveNote,
   saveStudyPack,
 } from './lib/db';
-import {
-  checkNanoAvailability,
-  generateStudyPack,
-  ON_DEVICE_CHAR_LIMIT,
-  type GenerateProgress,
-} from './lib/ai';
-import { isFirebaseConfigured } from './lib/firebase';
-import { describeSyncState, pullNotes, pushNote, type SyncState } from './lib/sync';
-import type { NanoAvailability, Note, StoredStudyPack } from './lib/types';
-import StudyPanel from './components/StudyPanel';
+import { checkNanoAvailability, ON_DEVICE_CHAR_LIMIT } from './lib/nano';
+import type { GenerateProgress } from './lib/ai';
+import { isFirebaseConfigured } from './lib/firebase-config';
+import { describeSyncState, type NanoAvailability, type Note, type StoredStudyPack, type SyncState } from './lib/types';
 import './App.css';
+
+// Code-splitting: the study panel (and, through it, the Firebase AI Logic
+// SDK in lib/ai.ts) loads on demand, so the first paint stays under Vite's
+// 500 KB chunk warning. `generateStudyPack` is likewise imported
+// dynamically inside onGenerate (see below).
+const StudyPanel = lazy(() => import('./components/StudyPanel'));
 
 const SAMPLE_NOTE = `Photosynthesis
 
@@ -83,6 +83,7 @@ export default function App() {
   useEffect(() => {
     refreshNotes().then(async (local) => {
       if (isFirebaseConfigured() && navigator.onLine) {
+        const { pullNotes } = await import('./lib/sync');
         const merged = await pullNotes(local);
         if (merged.length !== local.length) {
           for (const n of merged) await saveNote(n);
@@ -95,6 +96,7 @@ export default function App() {
       setSyncState(isFirebaseConfigured() ? 'syncing' : 'local-only');
       refreshNotes().then(async (local) => {
         if (!isFirebaseConfigured()) return;
+        const { pullNotes } = await import('./lib/sync');
         const merged = await pullNotes(local);
         setNotes(merged);
         setSyncState('synced');
@@ -142,6 +144,7 @@ export default function App() {
           setSyncState('offline');
         } else {
           setSyncState('syncing');
+          const { pushNote } = await import('./lib/sync');
           setSyncState((await pushNote(note)) ? 'synced' : 'error');
         }
       }
@@ -193,8 +196,11 @@ export default function App() {
     setError(null);
     setProgress({ phase: 'checking' });
     try {
-      // initializeDeviceModel() is called inside generateStudyPack, still
-      // within this click handler's user activation, as Chrome requires.
+      // The AI module (and the Firebase AI Logic SDK it imports) loads on
+      // demand here, keeping the initial bundle small. initializeDeviceModel()
+      // is called inside generateStudyPack, still within this click
+      // handler's user activation, as Chrome requires.
+      const { generateStudyPack } = await import('./lib/ai');
       const result = await generateStudyPack(content, { onProgress: setProgress });
       const stored: StoredStudyPack = { ...result, noteId: selectedId };
       await saveStudyPack(stored);
@@ -387,7 +393,11 @@ export default function App() {
                   {error}
                 </p>
               )}
-              {pack && <StudyPanel pack={pack} />}
+              {pack && (
+                <Suspense fallback={<p className="hint" role="status">Loading study pack…</p>}>
+                  <StudyPanel pack={pack} />
+                </Suspense>
+              )}
               {!pack && !generating && (
                 <p className="hint">
                   No study pack for this note yet. Press <strong>Generate study pack</strong> to get a

@@ -28,11 +28,12 @@ import {
   Schema,
   type GenerativeModel,
 } from 'firebase/ai';
-import { getAIClient, isFirebaseConfigured } from './firebase';
+import { getAIClient } from './firebase';
+import { isFirebaseConfigured } from './firebase-config';
+import { checkNanoAvailability, ON_DEVICE_CHAR_LIMIT } from './nano';
 import type {
   Flashcard,
   HybridStatus,
-  NanoAvailability,
   QuizQuestion,
   StudyPack,
   StudyPackResult,
@@ -40,44 +41,8 @@ import type {
 
 /** Cloud fallback model (also the SDK 13.x default hybrid in-cloud model). */
 export const CLOUD_MODEL = 'gemini-3.5-flash-lite';
-/** On-device (Gemini Nano) is only used for short notes; longer ones go to cloud. */
-export const ON_DEVICE_CHAR_LIMIT = 6000;
 /** Hard cap sent to the cloud model so giant pastes stay within limits. */
 const CLOUD_CHAR_LIMIT = 120_000;
-
-// ---------------------------------------------------------------------------
-// On-device availability probe (Chrome Prompt API)
-// ---------------------------------------------------------------------------
-
-interface LanguageModelGlobal {
-  availability: () => Promise<string>;
-}
-
-function getLanguageModel(): LanguageModelGlobal | null {
-  const lm = (window as unknown as Record<string, unknown>).LanguageModel;
-  if (!lm || typeof (lm as LanguageModelGlobal).availability !== 'function') return null;
-  return lm as LanguageModelGlobal;
-}
-
-/** Probe Chrome's on-device model. Never throws — returns 'unsupported' instead. */
-export async function checkNanoAvailability(): Promise<NanoAvailability> {
-  const lm = getLanguageModel();
-  if (!lm) return 'unsupported';
-  try {
-    const status = await lm.availability();
-    if (
-      status === 'available' ||
-      status === 'downloadable' ||
-      status === 'downloading' ||
-      status === 'unavailable'
-    ) {
-      return status;
-    }
-    return 'unavailable';
-  } catch {
-    return 'unavailable';
-  }
-}
 
 export async function getHybridStatus(): Promise<HybridStatus> {
   return {
@@ -382,7 +347,7 @@ export async function generateStudyPack(
     };
   }
 
-  const ai = getAIClient();
+  const ai = await getAIClient();
   if (!ai) throw new Error('Firebase AI Logic is unavailable (no Firebase config).');
 
   opts.onProgress?.({ phase: 'checking' });

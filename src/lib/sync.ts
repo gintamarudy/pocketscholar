@@ -8,12 +8,13 @@
 //
 // Firestore rules (firestore.rules) allow read/write only under a device's
 // own `devices/{deviceId}/notes/{noteId}` path.
+//
+// Code-splitting: `firebase/firestore` is imported dynamically, so this
+// module (and the Firestore SDK) only loads when sync actually runs.
 
-import { collection, doc, getDocs, setDoc } from 'firebase/firestore';
-import { getFirestoreClient, isFirebaseConfigured } from './firebase';
+import { getFirestoreClient } from './firebase';
+import { isFirebaseConfigured } from './firebase-config';
 import type { Note } from './types';
-
-export type SyncState = 'local-only' | 'offline' | 'syncing' | 'synced' | 'error';
 
 const DEVICE_KEY = 'pocketscholar-device-id';
 
@@ -26,18 +27,20 @@ export function getDeviceId(): string {
   return id;
 }
 
-function notesCollection() {
-  const db = getFirestoreClient();
+async function notesCollection() {
+  const db = await getFirestoreClient();
   if (!db) return null;
+  const { collection } = await import('firebase/firestore');
   return collection(db, 'devices', getDeviceId(), 'notes');
 }
 
 /** Push one note to Firestore. Returns false when sync is unavailable. */
 export async function pushNote(note: Note): Promise<boolean> {
   if (!isFirebaseConfigured() || !navigator.onLine) return false;
-  const col = notesCollection();
+  const col = await notesCollection();
   if (!col) return false;
   try {
+    const { doc, setDoc } = await import('firebase/firestore');
     await setDoc(doc(col, note.id), {
       title: note.title,
       content: note.content,
@@ -54,9 +57,10 @@ export async function pushNote(note: Note): Promise<boolean> {
 /** Pull remote notes (newer `updatedAt` wins over the local copy). */
 export async function pullNotes(local: Note[]): Promise<Note[]> {
   if (!isFirebaseConfigured() || !navigator.onLine) return local;
-  const col = notesCollection();
+  const col = await notesCollection();
   if (!col) return local;
   try {
+    const { getDocs } = await import('firebase/firestore');
     const snap = await getDocs(col);
     const byId = new Map(local.map((n) => [n.id, n]));
     snap.forEach((d) => {
@@ -75,20 +79,5 @@ export async function pullNotes(local: Note[]): Promise<Note[]> {
   } catch (err) {
     console.warn('[PocketScholar] Firestore pull failed:', err);
     return local;
-  }
-}
-
-export function describeSyncState(state: SyncState): string {
-  switch (state) {
-    case 'local-only':
-      return 'Local only — Firebase not configured';
-    case 'offline':
-      return 'Offline — changes saved locally, will sync when online';
-    case 'syncing':
-      return 'Syncing to Firestore…';
-    case 'synced':
-      return 'Synced to Firestore';
-    case 'error':
-      return 'Sync failed — saved locally';
   }
 }
