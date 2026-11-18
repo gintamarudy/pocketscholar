@@ -41,12 +41,16 @@ src/
   lib/
     types.ts      # Note / StudyPack / inference-source types
     db.ts         # IndexedDB store (notes + study packs)
-    firebase.ts   # Firebase init, App Check, getAI / Firestore clients
+    firebase-config.ts  # env-only Firebase config (no SDK — safe to import anywhere)
+    firebase.ts   # Firebase init, App Check, getAI / Firestore clients (SDK loaded lazily)
+    nano.ts       # Chrome Prompt API probe + on-device char limit (no SDK)
     ai.ts         # Hybrid routing + providers (the AI Logic integration)
+    samples.ts    # Demo sample notes (biology / physics / history)
     sync.ts       # Best-effort Firestore mirror
   components/
     StudyPanel.tsx  # Summary / flashcards / quiz + inference badge
   App.tsx         # Library, editor, import, status pills, setup panel
+samples/          # Markdown seed files for the demo notes (generated from samples.ts)
 ```
 
 ## License

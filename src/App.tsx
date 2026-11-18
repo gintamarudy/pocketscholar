@@ -15,6 +15,7 @@ import { checkNanoAvailability, ON_DEVICE_CHAR_LIMIT } from './lib/nano';
 import type { GenerateProgress } from './lib/ai';
 import { isFirebaseConfigured } from './lib/firebase-config';
 import { describeSyncState, type NanoAvailability, type Note, type StoredStudyPack, type SyncState } from './lib/types';
+import { getSampleNote, SAMPLE_NOTES } from './lib/samples';
 import './App.css';
 
 // Code-splitting: the study panel (and, through it, the Firebase AI Logic
@@ -22,16 +23,6 @@ import './App.css';
 // 500 KB chunk warning. `generateStudyPack` is likewise imported
 // dynamically inside onGenerate (see below).
 const StudyPanel = lazy(() => import('./components/StudyPanel'));
-
-const SAMPLE_NOTE = `Photosynthesis
-
-Photosynthesis is the process by which green plants, algae, and some bacteria convert light energy into chemical energy stored in glucose. It takes place mainly in the chloroplasts of leaf cells, using the pigment chlorophyll to capture sunlight.
-
-The overall equation is: 6CO2 + 6H2O + light energy -> C6H12O6 + 6O2. Carbon dioxide enters through tiny pores called stomata, while water is absorbed by the roots and transported up through the xylem.
-
-Photosynthesis has two stages. The light-dependent reactions take place in the thylakoid membranes and produce ATP and NADPH by splitting water, which releases oxygen as a byproduct. The Calvin cycle, or light-independent reactions, takes place in the stroma and uses ATP and NADPH to fix carbon dioxide into glucose.
-
-Factors that affect the rate of photosynthesis include light intensity, carbon dioxide concentration, and temperature. If any one of these is too low, it becomes the limiting factor. Farmers use this knowledge in greenhouses by adding extra light and carbon dioxide to increase crop yields.`;
 
 function nanoLabel(nano: NanoAvailability): string {
   switch (nano) {
@@ -65,6 +56,9 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [showSetup, setShowSetup] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [sampleId, setSampleId] = useState(SAMPLE_NOTES[0].id);
+  const deepLinkHandled = useRef(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const saveTimer = useRef<number | undefined>(undefined);
 
@@ -90,6 +84,7 @@ export default function App() {
           setNotes(merged);
         }
       }
+      setLoaded(true);
     });
     checkNanoAvailability().then(setNano);
     const onOnline = () => {
@@ -169,6 +164,30 @@ export default function App() {
     setPack(null);
     setError(null);
   }, []);
+
+  const loadSample = useCallback(
+    (id: string) => {
+      const sample = getSampleNote(id);
+      if (!sample) return;
+      void createNote(sample.content, sample.title);
+    },
+    [createNote],
+  );
+
+  // Deep link for demos: `?sample=photosynthesis` (or newtons-laws /
+  // french-revolution) opens that sample note on first load, creating it
+  // if it is not in the library yet.
+  useEffect(() => {
+    if (!loaded || deepLinkHandled.current) return;
+    const sample = getSampleNote(
+      new URLSearchParams(window.location.search).get('sample') ?? '',
+    );
+    if (!sample) return;
+    deepLinkHandled.current = true;
+    const existing = notes.find((n) => n.title === sample.title);
+    if (existing) void openNote(existing.id);
+    else void createNote(sample.content, sample.title);
+  }, [loaded, notes, createNote, openNote]);
 
   const removeNote = useCallback(async () => {
     if (!selectedId) return;
@@ -304,16 +323,37 @@ export default function App() {
             placeholder="Search notes…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
+            aria-label="Search notes"
           />
+          <div className="sample-picker">
+            <label htmlFor="sample-select">Try a sample note</label>
+            <div className="sample-row">
+              <select
+                id="sample-select"
+                value={sampleId}
+                onChange={(e) => setSampleId(e.target.value)}
+              >
+                {SAMPLE_NOTES.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.subject} — {s.title.replace(' — sample note', '')}
+                  </option>
+                ))}
+              </select>
+              <button onClick={() => loadSample(sampleId)}>Load sample</button>
+            </div>
+          </div>
           <ul className="note-list">
-            {filtered.length === 0 && (
+            {filtered.length === 0 && notes.length === 0 && (
               <li className="empty">
                 No notes yet.{' '}
-                <button className="link-btn" onClick={() => createNote(SAMPLE_NOTE, 'Photosynthesis — sample note')}>
+                <button className="link-btn" onClick={() => loadSample('photosynthesis')}>
                   Load the sample note
                 </button>{' '}
                 to try it out.
               </li>
+            )}
+            {filtered.length === 0 && notes.length > 0 && (
+              <li className="empty">No notes match “{search}”.</li>
             )}
             {filtered.map((n) => (
               <li key={n.id}>
@@ -395,7 +435,7 @@ export default function App() {
               )}
               {pack && (
                 <Suspense fallback={<p className="hint" role="status">Loading study pack…</p>}>
-                  <StudyPanel pack={pack} />
+                  <StudyPanel key={pack.generatedAt} pack={pack} />
                 </Suspense>
               )}
               {!pack && !generating && (
@@ -418,10 +458,15 @@ export default function App() {
                 <button className="primary" onClick={() => createNote()}>
                   + New note
                 </button>
-                <button onClick={() => createNote(SAMPLE_NOTE, 'Photosynthesis — sample note')}>
-                  Load the sample note
-                </button>
                 <button onClick={() => setShowSetup(true)}>How it works</button>
+              </div>
+              <div className="welcome-samples">
+                <p>Or try a sample note:</p>
+                {SAMPLE_NOTES.map((s) => (
+                  <button key={s.id} onClick={() => loadSample(s.id)}>
+                    {s.subject} — {s.title.replace(' — sample note', '')}
+                  </button>
+                ))}
               </div>
             </div>
           )}

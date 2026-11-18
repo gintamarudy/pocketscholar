@@ -8,7 +8,8 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "test:fallback": "node scripts/run-smoke-test.mjs"
+    "test:fallback": "node scripts/run-smoke-test.mjs",
+    "export:samples": "node scripts/export-samples.mjs"
   },
   "dependencies": {
     "firebase": "^13.4.0",

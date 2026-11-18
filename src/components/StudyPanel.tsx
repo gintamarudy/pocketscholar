@@ -43,18 +43,10 @@ export default function StudyPanel({ pack }: { pack: StudyPackResult }) {
     pack.quiz.map(() => null),
   );
 
-  // Reset study-mode state when a fresh pack arrives.
-  const packKey = pack.generatedAt;
-  const [seenKey, setSeenKey] = useState(packKey);
-  if (seenKey !== packKey) {
-    setSeenKey(packKey);
-    setTab('summary');
-    setCardIndex(0);
-    setFlipped(false);
-    setQuizIndex(0);
-    setSelected(null);
-    setAnswers(pack.quiz.map(() => null));
-  }
+  // Study-mode state resets automatically when a fresh pack arrives: App
+  // renders <StudyPanel key={pack.generatedAt} .../>, so this component
+  // remounts for every new pack. (Previously this was done with setState
+  // during render, which React discourages.)
 
   const score = useMemo(
     () => answers.filter((a, i) => a === pack.quiz[i]?.answerIndex).length,
@@ -77,13 +69,13 @@ export default function StudyPanel({ pack }: { pack: StudyPackResult }) {
       </p>
 
       <div className="tabs" role="tablist">
-        <button role="tab" className={tab === 'summary' ? 'active' : ''} onClick={() => setTab('summary')}>
+        <button role="tab" aria-selected={tab === 'summary'} className={tab === 'summary' ? 'active' : ''} onClick={() => setTab('summary')}>
           Summary
         </button>
-        <button role="tab" className={tab === 'flashcards' ? 'active' : ''} onClick={() => setTab('flashcards')}>
+        <button role="tab" aria-selected={tab === 'flashcards'} className={tab === 'flashcards' ? 'active' : ''} onClick={() => setTab('flashcards')}>
           Flashcards ({pack.flashcards.length})
         </button>
-        <button role="tab" className={tab === 'quiz' ? 'active' : ''} onClick={() => setTab('quiz')}>
+        <button role="tab" aria-selected={tab === 'quiz'} className={tab === 'quiz' ? 'active' : ''} onClick={() => setTab('quiz')}>
           Quiz ({pack.quiz.length}){quizDone ? ` · ${score}/${pack.quiz.length}` : ''}
         </button>
       </div>
