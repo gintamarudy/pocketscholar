@@ -34,6 +34,30 @@ npm run preview    # serve the production build locally
 
 No Firebase project is needed to run the app: without config it works fully local-only, with the clearly labelled extractive fallback. To enable real Gemini inference, follow [SETUP.md](SETUP.md).
 
+## Screenshots
+
+Real-UI screenshots (headless Chromium via CDP — no `google-chrome` binary
+on this VM, the Playwright-cached Chromium is used instead) live in
+`screenshots/`:
+
+| File | Shows |
+|---|---|
+| `01-welcome-desktop.png` | Welcome screen, desktop 1280×900 |
+| `02-editor-sample-desktop.png` | Editor with the Photosynthesis sample |
+| `03-study-summary-desktop.png` | Study pack — summary + key points + badge |
+| `04-study-flashcards-desktop.png` | Flashcard mode |
+| `05-study-quiz-desktop.png` | Quiz mode with feedback |
+| `06-welcome-mobile.png` | Welcome screen, mobile 390×844 |
+| `07-study-mobile.png` | Study pack, mobile 390×844 |
+
+Regenerate them with the dev server + headless Chromium running (see
+`scripts/screenshot.mjs` for the exact launch command):
+
+```bash
+npm run dev   # terminal 1
+node scripts/screenshot.mjs   # terminal 2
+```
+
 ## Project structure
 
 ```

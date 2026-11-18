@@ -304,7 +304,7 @@ export default function App() {
             <button className="primary" onClick={() => createNote()}>
               + New note
             </button>
-            <button onClick={() => fileRef.current?.click()}>Import .txt / .md</button>
+            <button onClick={() => fileRef.current?.click()}>Import .txt/.md</button>
             <input
               ref={fileRef}
               type="file"
