@@ -1,32 +1,54 @@
-# React + TypeScript + Vite
+# PocketScholar
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Offline-first AI study notes — built for **#BuildHybridAI 2026** (Firebase AI Logic), targeting **Best Web/Chrome App**.
 
-Currently, two official plugins are available:
+Paste or type study notes (or import a `.txt` / `.md` file) and PocketScholar turns them into a **summary, key points, flashcards, and a multiple-choice quiz**. Notes are stored locally in IndexedDB and work fully offline; when Firebase is configured and you are online, they sync to Firestore.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Why hybrid inference matters here
 
-## React Compiler
+Students with unstable internet still need AI study help. PocketScholar routes every generation through **Firebase AI Logic hybrid inference** (`firebase/ai`):
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+| Situation | Route | Label shown in the UI |
+|---|---|---|
+| Gemini Nano available in Chrome (desktop) **and** the note is short (≤ 6,000 chars) | On-device via `InferenceMode.PREFER_ON_DEVICE` | **On-device (Gemini Nano)** |
+| Nano unavailable, or the note is long | Cloud Gemini (`gemini-3.5-flash-lite`) via the Gemini Developer API backend | **Cloud (Gemini)** |
+| No Firebase project configured yet | Local extractive fallback (no model called) | **Local fallback (extractive)** |
 
-## Expanding the Oxlint configuration
+The label is read from the SDK's `response.inferenceSource` (`ON_DEVICE` / `IN_CLOUD`) — never guessed from the route requested. Every result also shows its latency and why that route was chosen.
 
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
+## Tech
 
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+- **Vite + React + TypeScript**
+- **Firebase AI Logic** (`firebase/ai` v13): `getAI` + `GoogleAIBackend`, `getGenerativeModel` with `InferenceMode.PREFER_ON_DEVICE`, `initializeDeviceModel()` (called after the Generate click, as Chrome requires), structured JSON output via `Schema` (on-device `responseConstraint` + cloud `responseMimeType: application/json`)
+- **Firestore** for sync, **App Check** (debug provider in dev, reCAPTCHA v3 in prod)
+- **IndexedDB** (hand-rolled, zero-dep) for offline-first notes + saved study packs
+
+## Run it
+
+```bash
+npm install
+npm run dev        # http://localhost:5173
+npm run build      # production build (outputs to dist/)
+npm run preview    # serve the production build locally
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+No Firebase project is needed to run the app: without config it works fully local-only, with the clearly labelled extractive fallback. To enable real Gemini inference, follow [SETUP.md](SETUP.md).
+
+## Project structure
+
+```
+src/
+  lib/
+    types.ts      # Note / StudyPack / inference-source types
+    db.ts         # IndexedDB store (notes + study packs)
+    firebase.ts   # Firebase init, App Check, getAI / Firestore clients
+    ai.ts         # Hybrid routing + providers (the AI Logic integration)
+    sync.ts       # Best-effort Firestore mirror
+  components/
+    StudyPanel.tsx  # Summary / flashcards / quiz + inference badge
+  App.tsx         # Library, editor, import, status pills, setup panel
+```
+
+## License
+
+Apache-2.0 (see `LICENSE`).

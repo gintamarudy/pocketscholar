@@ -1,122 +1,427 @@
-import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import './App.css'
+// PocketScholar — offline-first AI study notes.
+// Library + editor (IndexedDB) on the left, AI study pack on the right.
+// All UI text is in English.
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  deleteNote,
+  getNote,
+  getStudyPack,
+  listNotes,
+  newNoteId,
+  saveNote,
+  saveStudyPack,
+} from './lib/db';
+import {
+  checkNanoAvailability,
+  generateStudyPack,
+  ON_DEVICE_CHAR_LIMIT,
+  type GenerateProgress,
+} from './lib/ai';
+import { isFirebaseConfigured } from './lib/firebase';
+import { describeSyncState, pullNotes, pushNote, type SyncState } from './lib/sync';
+import type { NanoAvailability, Note, StoredStudyPack } from './lib/types';
+import StudyPanel from './components/StudyPanel';
+import './App.css';
 
-function App() {
-  const [count, setCount] = useState(0)
+const SAMPLE_NOTE = `Photosynthesis
 
-  return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
+Photosynthesis is the process by which green plants, algae, and some bacteria convert light energy into chemical energy stored in glucose. It takes place mainly in the chloroplasts of leaf cells, using the pigment chlorophyll to capture sunlight.
 
-      <div className="ticks"></div>
+The overall equation is: 6CO2 + 6H2O + light energy -> C6H12O6 + 6O2. Carbon dioxide enters through tiny pores called stomata, while water is absorbed by the roots and transported up through the xylem.
 
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
+Photosynthesis has two stages. The light-dependent reactions take place in the thylakoid membranes and produce ATP and NADPH by splitting water, which releases oxygen as a byproduct. The Calvin cycle, or light-independent reactions, takes place in the stroma and uses ATP and NADPH to fix carbon dioxide into glucose.
 
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+Factors that affect the rate of photosynthesis include light intensity, carbon dioxide concentration, and temperature. If any one of these is too low, it becomes the limiting factor. Farmers use this knowledge in greenhouses by adding extra light and carbon dioxide to increase crop yields.`;
+
+function nanoLabel(nano: NanoAvailability): string {
+  switch (nano) {
+    case 'available':
+      return 'Gemini Nano: available on-device';
+    case 'downloadable':
+      return 'Gemini Nano: downloadable (one click to download)';
+    case 'downloading':
+      return 'Gemini Nano: downloading…';
+    case 'unavailable':
+      return 'Gemini Nano: unavailable in this browser';
+    case 'unsupported':
+      return 'Gemini Nano: not supported (needs Chrome 139+ on desktop)';
+  }
 }
 
-export default App
+export default function App() {
+  const [notes, setNotes] = useState<Note[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [title, setTitle] = useState('');
+  const [content, setContent] = useState('');
+  const [pack, setPack] = useState<StoredStudyPack | null>(null);
+  const [search, setSearch] = useState('');
+  const [nano, setNano] = useState<NanoAvailability>('unsupported');
+  const [firebaseConfigured] = useState(() => isFirebaseConfigured());
+  const [syncState, setSyncState] = useState<SyncState>(
+    isFirebaseConfigured() ? (navigator.onLine ? 'synced' : 'offline') : 'local-only',
+  );
+  const [generating, setGenerating] = useState(false);
+  const [progress, setProgress] = useState<GenerateProgress | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [showSetup, setShowSetup] = useState(false);
+  const [savedFlash, setSavedFlash] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const saveTimer = useRef<number | undefined>(undefined);
+
+  const selected = useMemo(
+    () => notes.find((n) => n.id === selectedId) ?? null,
+    [notes, selectedId],
+  );
+
+  const refreshNotes = useCallback(async () => {
+    const local = await listNotes();
+    setNotes(local);
+    return local;
+  }, []);
+
+  // Initial load: local notes first, then a best-effort Firestore pull.
+  useEffect(() => {
+    refreshNotes().then(async (local) => {
+      if (isFirebaseConfigured() && navigator.onLine) {
+        const merged = await pullNotes(local);
+        if (merged.length !== local.length) {
+          for (const n of merged) await saveNote(n);
+          setNotes(merged);
+        }
+      }
+    });
+    checkNanoAvailability().then(setNano);
+    const onOnline = () => {
+      setSyncState(isFirebaseConfigured() ? 'syncing' : 'local-only');
+      refreshNotes().then(async (local) => {
+        if (!isFirebaseConfigured()) return;
+        const merged = await pullNotes(local);
+        setNotes(merged);
+        setSyncState('synced');
+      });
+    };
+    const onOffline = () => setSyncState(isFirebaseConfigured() ? 'offline' : 'local-only');
+    window.addEventListener('online', onOnline);
+    window.addEventListener('offline', onOffline);
+    return () => {
+      window.removeEventListener('online', onOnline);
+      window.removeEventListener('offline', onOffline);
+    };
+  }, [refreshNotes]);
+
+  const openNote = useCallback(async (id: string) => {
+    const note = await getNote(id);
+    if (!note) return;
+    setSelectedId(id);
+    setTitle(note.title);
+    setContent(note.content);
+    setPack((await getStudyPack(id)) ?? null);
+    setError(null);
+  }, []);
+
+  // Autosave (debounced) — local first, Firestore push best-effort.
+  useEffect(() => {
+    if (!selectedId) return;
+    window.clearTimeout(saveTimer.current);
+    saveTimer.current = window.setTimeout(async () => {
+      const note: Note = {
+        id: selectedId,
+        title: title.trim() || 'Untitled note',
+        content,
+        createdAt: selected?.createdAt ?? Date.now(),
+        updatedAt: Date.now(),
+      };
+      await saveNote(note);
+      setNotes((prev) =>
+        prev.map((n) => (n.id === note.id ? note : n)).sort((a, b) => b.updatedAt - a.updatedAt),
+      );
+      setSavedFlash(true);
+      window.setTimeout(() => setSavedFlash(false), 1200);
+      if (isFirebaseConfigured()) {
+        if (!navigator.onLine) {
+          setSyncState('offline');
+        } else {
+          setSyncState('syncing');
+          setSyncState((await pushNote(note)) ? 'synced' : 'error');
+        }
+      }
+    }, 600);
+    return () => window.clearTimeout(saveTimer.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [title, content, selectedId]);
+
+  const createNote = useCallback(async (initialContent = '', initialTitle = '') => {
+    const note: Note = {
+      id: newNoteId(),
+      title: initialTitle || 'Untitled note',
+      content: initialContent,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    await saveNote(note);
+    setNotes((prev) => [note, ...prev]);
+    setSelectedId(note.id);
+    setTitle(note.title);
+    setContent(note.content);
+    setPack(null);
+    setError(null);
+  }, []);
+
+  const removeNote = useCallback(async () => {
+    if (!selectedId) return;
+    if (!window.confirm('Delete this note and its study pack?')) return;
+    await deleteNote(selectedId);
+    setSelectedId(null);
+    setTitle('');
+    setContent('');
+    setPack(null);
+    setNotes((prev) => prev.filter((n) => n.id !== selectedId));
+  }, [selectedId]);
+
+  const importFile = useCallback(
+    async (file: File) => {
+      const text = await file.text();
+      const name = file.name.replace(/\.(txt|md)$/i, '').replace(/[-_]+/g, ' ');
+      await createNote(text, name || file.name);
+    },
+    [createNote],
+  );
+
+  const onGenerate = useCallback(async () => {
+    if (!selectedId || generating) return;
+    setGenerating(true);
+    setError(null);
+    setProgress({ phase: 'checking' });
+    try {
+      // initializeDeviceModel() is called inside generateStudyPack, still
+      // within this click handler's user activation, as Chrome requires.
+      const result = await generateStudyPack(content, { onProgress: setProgress });
+      const stored: StoredStudyPack = { ...result, noteId: selectedId };
+      await saveStudyPack(stored);
+      setPack(stored);
+      // Re-probe Nano status: a first run may have triggered the download.
+      checkNanoAvailability().then(setNano);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Generation failed.');
+    } finally {
+      setGenerating(false);
+      setProgress(null);
+    }
+  }, [selectedId, generating, content]);
+
+  const filtered = notes.filter(
+    (n) =>
+      n.title.toLowerCase().includes(search.toLowerCase()) ||
+      n.content.toLowerCase().includes(search.toLowerCase()),
+  );
+
+  const wordCount = content.trim() ? content.trim().split(/\s+/).length : 0;
+  const willUseNano =
+    nano === 'available' && content.length <= ON_DEVICE_CHAR_LIMIT && content.length >= 50;
+
+  return (
+    <div className="app">
+      <header className="topbar">
+        <div className="brand">
+          <span className="brand-mark">📚</span>
+          <div>
+            <h1>PocketScholar</h1>
+            <p className="tagline">Offline-first AI study notes — on-device when possible, cloud when needed.</p>
+          </div>
+        </div>
+        <div className="status-pills">
+          <span className={`pill ${nano === 'available' ? 'pill-ok' : 'pill-warn'}`} title={nanoLabel(nano)}>
+            {nano === 'available' ? '● Nano ready' : `○ Nano: ${nano}`}
+          </span>
+          <span className={`pill ${firebaseConfigured ? 'pill-ok' : 'pill-warn'}`} title={firebaseConfigured ? 'Firebase project configured — cloud inference available' : 'No Firebase config in .env — running local-only'}>
+            {firebaseConfigured ? '● Firebase connected' : '○ Firebase not configured'}
+          </span>
+          <span className="pill" title={describeSyncState(syncState)}>
+            {syncState === 'local-only' ? '💾 Local only' : describeSyncState(syncState)}
+          </span>
+          <button className="setup-btn" onClick={() => setShowSetup(!showSetup)}>
+            {showSetup ? 'Hide setup' : 'Setup & how it works'}
+          </button>
+        </div>
+      </header>
+
+      {showSetup && (
+        <section className="setup-panel">
+          <h2>How PocketScholar works</h2>
+          <ol>
+            <li><strong>Write or import a note</strong> (.txt / .md). It is saved in your browser (IndexedDB) and works fully offline.</li>
+            <li><strong>Generate a study pack</strong> — summary, key points, flashcards and a quiz. Routing is automatic and always labelled:
+              <ul>
+                <li><strong>On-device (Gemini Nano)</strong> — when Chrome on desktop has the model available and the note is short (≤ {ON_DEVICE_CHAR_LIMIT.toLocaleString()} characters). Your note never leaves the device.</li>
+                <li><strong>Cloud (Gemini)</strong> — when Nano is unavailable or the note is long. Runs through Firebase AI Logic (Gemini Developer API, free tier).</li>
+                <li><strong>Local fallback (extractive)</strong> — only while no Firebase project is configured yet. No model is called; the summary is built from your own sentences.</li>
+              </ul>
+            </li>
+            <li><strong>Study</strong> with flip flashcards and an interactive quiz, then come back any time — packs are saved with the note.</li>
+            <li><strong>Sync:</strong> when Firebase is configured and you are online, notes mirror to Firestore automatically.</li>
+          </ol>
+          <h3>To enable the cloud path (one-time, free)</h3>
+          <ol>
+            <li>Create a free Firebase project (Spark plan, no card) in the Firebase console, run the AI Logic guided setup, and choose the <em>Gemini Developer API</em>.</li>
+            <li>Copy <code>.env.example</code> to <code>.env</code> and fill in the six <code>VITE_FIREBASE_*</code> values from your web app config.</li>
+            <li>App Check (enforced by the AI Logic setup): in dev, the app sets <code>FIREBASE_APPCHECK_DEBUG_TOKEN=true</code> and prints a debug token in the browser console — register it in the console under <em>App Check → Apps → Manage debug tokens</em>. Full steps: <code>SETUP.md</code>.</li>
+            <li>On-device Nano (Chrome 139+ desktop): enable <code>chrome://flags/#prompt-api-for-gemini-nano-multimodal-input</code>, restart Chrome, then run <code>await LanguageModel.availability()</code> in DevTools — it should read <code>available</code> (first use downloads the model once).</li>
+          </ol>
+          {!firebaseConfigured && (
+            <p className="setup-warn">⚠️ Firebase is not configured in this build, so Generate currently uses the local extractive fallback. The Firebase AI Logic code is real and wired — it activates as soon as <code>.env</code> is filled in.</p>
+          )}
+        </section>
+      )}
+
+      <main className="layout">
+        <aside className="sidebar">
+          <div className="sidebar-actions">
+            <button className="primary" onClick={() => createNote()}>
+              + New note
+            </button>
+            <button onClick={() => fileRef.current?.click()}>Import .txt / .md</button>
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".txt,.md,text/plain,text/markdown"
+              hidden
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) void importFile(f);
+                e.target.value = '';
+              }}
+            />
+          </div>
+          <input
+            className="search"
+            type="search"
+            placeholder="Search notes…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          <ul className="note-list">
+            {filtered.length === 0 && (
+              <li className="empty">
+                No notes yet.{' '}
+                <button className="link-btn" onClick={() => createNote(SAMPLE_NOTE, 'Photosynthesis — sample note')}>
+                  Load the sample note
+                </button>{' '}
+                to try it out.
+              </li>
+            )}
+            {filtered.map((n) => (
+              <li key={n.id}>
+                <button
+                  className={`note-item ${n.id === selectedId ? 'selected' : ''}`}
+                  onClick={() => void openNote(n.id)}
+                >
+                  <span className="note-title">{n.title}</span>
+                  <span className="note-snippet">{n.content.slice(0, 80) || 'Empty note'}</span>
+                  <span className="note-date">
+                    {new Date(n.updatedAt).toLocaleDateString(undefined, {
+                      month: 'short',
+                      day: 'numeric',
+                    })}{' '}
+                    · {new Date(n.updatedAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+          <p className="sidebar-foot">
+            Notes live in this browser (IndexedDB).
+            {firebaseConfigured ? ' They also sync to Firestore when online.' : ' Add Firebase config to sync them to Firestore.'}
+          </p>
+        </aside>
+
+        <section className="editor-pane">
+          {selected ? (
+            <>
+              <input
+                className="title-input"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="Note title"
+                aria-label="Note title"
+              />
+              <textarea
+                className="content-input"
+                value={content}
+                onChange={(e) => setContent(e.target.value)}
+                placeholder="Paste or type your study notes here… (or import a .txt / .md file)"
+                aria-label="Note content"
+              />
+              <div className="editor-bar">
+                <span className="meta">
+                  {wordCount.toLocaleString()} words · {content.length.toLocaleString()} characters
+                  {savedFlash ? ' · ✓ Saved locally' : ''}
+                </span>
+                <span className="route-preview" title={nanoLabel(nano)}>
+                  {content.length < 50
+                    ? 'Write a few sentences to enable Generate.'
+                    : willUseNano
+                      ? 'Will try: On-device (Gemini Nano)'
+                      : firebaseConfigured
+                        ? 'Will try: Cloud (Gemini)'
+                        : 'Will use: Local fallback (Firebase not configured)'}
+                </span>
+                <button className="danger-ghost" onClick={() => void removeNote()}>
+                  Delete
+                </button>
+                <button
+                  className="primary"
+                  disabled={generating || content.trim().length < 50}
+                  onClick={() => void onGenerate()}
+                >
+                  {generating ? 'Generating…' : '✨ Generate study pack'}
+                </button>
+              </div>
+              {progress?.phase === 'downloading-model' && (
+                <div className="download-bar" role="status">
+                  <span>Downloading on-device model… {Math.round((progress.downloadProgress ?? 0) * 100)}%</span>
+                  <progress value={progress.downloadProgress ?? 0} max={1} />
+                </div>
+              )}
+              {error && (
+                <p className="error" role="alert">
+                  {error}
+                </p>
+              )}
+              {pack && <StudyPanel pack={pack} />}
+              {!pack && !generating && (
+                <p className="hint">
+                  No study pack for this note yet. Press <strong>Generate study pack</strong> to get a
+                  summary, key points, flashcards and a quiz — with a badge showing exactly where the
+                  AI ran.
+                </p>
+              )}
+            </>
+          ) : (
+            <div className="welcome">
+              <h2>Your notes, studied by AI — even offline.</h2>
+              <p>
+                PocketScholar turns study notes into summaries, flashcards and quizzes. Short notes run
+                entirely on your device with Gemini Nano; longer notes fall back to Gemini in the cloud
+                via Firebase AI Logic. Every result tells you where it ran and how long it took.
+              </p>
+              <div className="welcome-actions">
+                <button className="primary" onClick={() => createNote()}>
+                  + New note
+                </button>
+                <button onClick={() => createNote(SAMPLE_NOTE, 'Photosynthesis — sample note')}>
+                  Load the sample note
+                </button>
+                <button onClick={() => setShowSetup(true)}>How it works</button>
+              </div>
+            </div>
+          )}
+        </section>
+      </main>
+
+      <footer className="footer">
+        PocketScholar — built for #BuildHybridAI 2026 · Firebase AI Logic hybrid inference (Gemini Nano
+        on-device + Gemini cloud) · Notes stay in your browser unless Firestore sync is configured.
+      </footer>
+    </div>
+  );
+}
