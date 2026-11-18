@@ -11,7 +11,7 @@
 // use the debug provider (see SETUP.md for how to register the debug token).
 
 import { initializeApp, type FirebaseApp } from 'firebase/app';
-import { initializeAppCheck, ReCaptchaV3Provider } from 'firebase/app-check';
+import { initializeAppCheck, CustomProvider, ReCaptchaV3Provider } from 'firebase/app-check';
 import { getFirestore, type Firestore } from 'firebase/firestore';
 import { getAI, GoogleAIBackend, type AI } from 'firebase/ai';
 
@@ -58,13 +58,22 @@ export function getFirebaseApp(): FirebaseApp | null {
 
   // AppCheck: in dev, use the debug provider so localhost works while
   // enforcement is on. Setting FIREBASE_APPCHECK_DEBUG_TOKEN=true makes the
-  // SDK print a debug token in the console; register it in the Firebase
-  // console under App Check > Apps > Manage debug tokens (see SETUP.md).
-  // In production builds the reCAPTCHA v3 provider is used instead — set
-  // VITE_RECAPTCHA_SITE_KEY in .env for the deployed site.
+  // SDK print a debug token in the console and use it for every token
+  // request (the provider passed here is then unused); register that token
+  // in the Firebase console under App Check > Apps > Manage debug tokens
+  // (see SETUP.md). In production builds the reCAPTCHA v3 provider is used
+  // instead — set VITE_RECAPTCHA_SITE_KEY in .env for the deployed site.
+  // (AppCheckOptions requires a provider, hence the CustomProvider
+  // placeholder in dev; it is never called while debug mode is enabled.)
   if (import.meta.env.DEV) {
     (self as unknown as Record<string, unknown>).FIREBASE_APPCHECK_DEBUG_TOKEN = true;
-    initializeAppCheck(app, { isTokenAutoRefreshEnabled: true });
+    initializeAppCheck(app, {
+      provider: new CustomProvider({
+        getToken: () =>
+          Promise.resolve({ token: 'debug', expireTimeMillis: Date.now() + 3_600_000 }),
+      }),
+      isTokenAutoRefreshEnabled: true,
+    });
   } else if (import.meta.env.VITE_RECAPTCHA_SITE_KEY) {
     initializeAppCheck(app, {
       provider: new ReCaptchaV3Provider(import.meta.env.VITE_RECAPTCHA_SITE_KEY),

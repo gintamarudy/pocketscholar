@@ -255,9 +255,20 @@ const STOPWORDS = new Set(
 );
 
 function splitSentences(text: string): string[] {
-  return text
+  // Drop bare heading lines ("Photosynthesis") so they don't merge into the
+  // following sentence when whitespace is collapsed.
+  const body = text
+    .split('\n')
+    .filter((line) => {
+      const t = line.trim();
+      if (!t) return false;
+      const isHeading = !/[.!?]$/.test(t) && t.length < 80 && !t.includes('  ');
+      return !isHeading;
+    })
+    .join(' ');
+  return body
     .replace(/\s+/g, ' ')
-    .split(/(?<=[.!?])\s+|\n+/)
+    .split(/(?<=[.!?])\s+/)
     .map((s) => s.trim())
     .filter((s) => s.length > 25 && s.length < 400);
 }
@@ -286,10 +297,15 @@ function extractiveStudyPack(noteText: string): StudyPack {
   const keyPoints = top.slice(0, 6).map((s) => (s.length > 140 ? `${s.slice(0, 137)}…` : s));
 
   // Cloze flashcards: blank out the most frequent keyword in a sentence.
+  // Prefer a keyword that is not the first word, so the blank reads well.
+  const pickKeyword = (s: string): string | undefined => {
+    const words = contentWords(s).sort((a, b) => (freq.get(b) ?? 0) - (freq.get(a) ?? 0));
+    const firstWord = s.trim().split(/\s+/)[0]?.toLowerCase().replace(/[^a-z0-9-]/g, '');
+    return words.find((w) => w !== firstWord) ?? words[0];
+  };
   const flashcards: Flashcard[] = [];
   for (const s of top.slice(0, 6)) {
-    const words = contentWords(s).sort((a, b) => (freq.get(b) ?? 0) - (freq.get(a) ?? 0));
-    const key = words[0];
+    const key = pickKeyword(s);
     if (!key) continue;
     const blanked = s.replace(new RegExp(`\\b${key}\\b`, 'i'), '______');
     if (blanked === s) continue;
@@ -299,8 +315,7 @@ function extractiveStudyPack(noteText: string): StudyPack {
   // Cloze quiz: same idea, distractors are other frequent keywords.
   const quiz: QuizQuestion[] = [];
   for (const s of top.slice(0, 5)) {
-    const words = contentWords(s).sort((a, b) => (freq.get(b) ?? 0) - (freq.get(a) ?? 0));
-    const key = words[0];
+    const key = pickKeyword(s);
     if (!key) continue;
     const distractors = keywords.filter((w) => w !== key).slice(0, 3);
     if (distractors.length < 3) continue;
