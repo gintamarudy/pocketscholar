@@ -359,6 +359,20 @@ code {
 .ocr-preview { margin-top: 12px; max-height: 140px; max-width: 100%; border: 1px solid var(--border); border-radius: 8px; }
 .ocr-result { margin-top: 12px; font-size: 13px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; }
 
+/* Q&A about a note: question box below the study pack, per-note history
+   with the same source badge as Generate (on-device / cloud / local). */
+.qa { margin-top: 20px; border-top: 1px solid var(--border); padding-top: 16px; }
+.qa-head { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; }
+.qa-head h2 { margin: 0; }
+.qa-clear { background: none; border: none; color: var(--muted); text-decoration: underline; cursor: pointer; padding: 4px 0; }
+.qa-history { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+.qa-msg { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; background: var(--surface); }
+.qa-user { background: var(--accent-soft); border-color: var(--accent-soft); }
+.qa-text { margin: 0 0 8px; white-space: pre-wrap; }
+.qa-msg .badge { margin-top: 2px; }
+.qa-input-row { display: flex; gap: 8px; margin-top: 12px; }
+.qa-input { flex: 1; min-width: 0; }
+
 /* Mobile overrides — these MUST stay at the end of the file: they have the
    same specificity as the base .editor-pane / .title-input rules above, so
    an earlier media block would lose to the later base rule and silently do

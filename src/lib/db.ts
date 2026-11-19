@@ -1,13 +1,15 @@
 // Offline-first local storage for PocketScholar, built on IndexedDB (no deps).
 // Notes and their generated study packs live here first; Firestore sync is a
 // best-effort mirror on top (see lib/sync.ts) and never blocks local use.
+// Q&A history (lib/types.ts QaThread) is local-only, like study packs.
 
-import type { Note, StoredStudyPack } from './types';
+import type { Note, QaThread, StoredStudyPack } from './types';
 
 const DB_NAME = 'pocketscholar';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const NOTES_STORE = 'notes';
 const PACKS_STORE = 'studyPacks';
+const QA_STORE = 'qaThreads';
 
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -19,6 +21,9 @@ function openDb(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains(PACKS_STORE)) {
         db.createObjectStore(PACKS_STORE, { keyPath: 'noteId' });
+      }
+      if (!db.objectStoreNames.contains(QA_STORE)) {
+        db.createObjectStore(QA_STORE, { keyPath: 'noteId' });
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -63,6 +68,7 @@ export async function saveNote(note: Note): Promise<void> {
 export async function deleteNote(id: string): Promise<void> {
   await tx(NOTES_STORE, 'readwrite', (s) => s.delete(id));
   await tx(PACKS_STORE, 'readwrite', (s) => s.delete(id));
+  await tx(QA_STORE, 'readwrite', (s) => s.delete(id));
 }
 
 export async function getStudyPack(noteId: string): Promise<StoredStudyPack | undefined> {
@@ -71,4 +77,16 @@ export async function getStudyPack(noteId: string): Promise<StoredStudyPack | un
 
 export async function saveStudyPack(pack: StoredStudyPack): Promise<void> {
   await tx(PACKS_STORE, 'readwrite', (s) => s.put(pack));
+}
+
+export async function getQaThread(noteId: string): Promise<QaThread | undefined> {
+  return tx<QaThread | undefined>(QA_STORE, 'readonly', (s) => s.get(noteId));
+}
+
+export async function saveQaThread(thread: QaThread): Promise<void> {
+  await tx(QA_STORE, 'readwrite', (s) => s.put(thread));
+}
+
+export async function deleteQaThread(noteId: string): Promise<void> {
+  await tx(QA_STORE, 'readwrite', (s) => s.delete(noteId));
 }

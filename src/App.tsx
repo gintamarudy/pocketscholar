@@ -4,18 +4,22 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   deleteNote,
+  deleteQaThread,
   getNote,
+  getQaThread,
   getStudyPack,
   listNotes,
   newNoteId,
   saveNote,
+  saveQaThread,
   saveStudyPack,
 } from './lib/db';
 import { checkNanoAvailability, ON_DEVICE_CHAR_LIMIT } from './lib/nano';
 import type { GenerateProgress } from './lib/ai';
 import { isFirebaseConfigured } from './lib/firebase-config';
-import { describeSyncState, type NanoAvailability, type Note, type StoredStudyPack, type SyncState } from './lib/types';
+import { describeSyncState, type NanoAvailability, type Note, type QaMessage, type StoredStudyPack, type SyncState } from './lib/types';
 import { getSampleNote, SAMPLE_NOTES } from './lib/samples';
+import { InferenceBadge } from './components/InferenceBadge';
 import './App.css';
 
 // Code-splitting: the study panel (and, through it, the Firebase AI Logic
@@ -74,6 +78,14 @@ export default function App() {
   } | null>(null);
   const [ocrPhoto, setOcrPhoto] = useState<{ blob: Blob; previewUrl: string } | null>(null);
 
+  // Q&A about the selected note (photo -> note -> ask). History is per-note,
+  // stored in IndexedDB like study packs, and loaded when a note opens.
+  const [qaMessages, setQaMessages] = useState<QaMessage[]>([]);
+  const [qaQuestion, setQaQuestion] = useState('');
+  const [qaAsking, setQaAsking] = useState(false);
+  const [qaStatus, setQaStatus] = useState<string | null>(null);
+  const [qaError, setQaError] = useState<string | null>(null);
+
   const selected = useMemo(
     () => notes.find((n) => n.id === selectedId) ?? null,
     [notes, selectedId],
@@ -125,6 +137,8 @@ export default function App() {
     setTitle(note.title);
     setContent(note.content);
     setPack((await getStudyPack(id)) ?? null);
+    setQaMessages((await getQaThread(id))?.messages ?? []);
+    setQaError(null);
     setError(null);
   }, []);
 
@@ -174,6 +188,8 @@ export default function App() {
     setTitle(note.title);
     setContent(note.content);
     setPack(null);
+    setQaMessages([]);
+    setQaError(null);
     setError(null);
   }, []);
 
@@ -323,6 +339,63 @@ export default function App() {
     }
   }, [selectedId, generating, content]);
 
+  // Ask a question about the selected note. Same hybrid routing as Generate
+  // (Nano on-device when available, cloud otherwise); the answer is grounded
+  // in the note — see lib/ai.ts askQuestion. The AI module loads on demand.
+  const askQa = useCallback(async () => {
+    if (!selectedId || qaAsking) return;
+    const question = qaQuestion.trim();
+    if (!question) return;
+    setQaAsking(true);
+    setQaError(null);
+    setQaStatus('Checking where to answer…');
+    const userMsg: QaMessage = { role: 'user', text: question, askedAt: Date.now() };
+    const withQuestion = [...qaMessages, userMsg];
+    setQaMessages(withQuestion);
+    setQaQuestion('');
+    try {
+      const { askQuestion } = await import('./lib/ai');
+      const answer = await askQuestion(content, question, {
+        history: qaMessages,
+        onProgress: (p) => {
+          setQaStatus(
+            p.phase === 'checking'
+              ? 'Checking where to answer…'
+              : p.route === 'on-device'
+                ? 'Answering on-device (Gemini Nano)…'
+                : p.route === 'cloud'
+                  ? 'Answering in the cloud (Gemini)…'
+                  : 'Answering from your note (local)…',
+          );
+        },
+      });
+      const assistantMsg: QaMessage = {
+        role: 'assistant',
+        text: answer.answer,
+        source: answer.source,
+        modelName: answer.modelName,
+        latencyMs: answer.latencyMs,
+        askedAt: Date.now(),
+      };
+      const updated = [...withQuestion, assistantMsg];
+      setQaMessages(updated);
+      await saveQaThread({ noteId: selectedId, messages: updated, updatedAt: Date.now() });
+      checkNanoAvailability().then(setNano);
+    } catch (err) {
+      setQaError(err instanceof Error ? err.message : 'Could not answer that question.');
+    } finally {
+      setQaAsking(false);
+      setQaStatus(null);
+    }
+  }, [selectedId, qaAsking, qaQuestion, qaMessages, content]);
+
+  const clearQa = useCallback(async () => {
+    if (!selectedId) return;
+    setQaMessages([]);
+    setQaError(null);
+    await deleteQaThread(selectedId);
+  }, [selectedId]);
+
   const filtered = notes.filter(
     (n) =>
       n.title.toLowerCase().includes(search.toLowerCase()) ||
@@ -395,7 +468,9 @@ export default function App() {
               </ul>
             </li>
             <li><strong>Study</strong> with flip flashcards and an interactive quiz, then come back any time — packs are saved with the note.</li>
+            <li><strong>Ask about the note</strong> — below the study pack, ask a question and get a grounded answer from the note (on-device or cloud, same routing as Generate, badge shown on every answer). History is saved on this device.</li>
             <li><strong>Sync:</strong> when Firebase is configured and you are online, notes mirror to Firestore automatically.</li>
+            <li><strong>Install for offline use:</strong> this is an installable app — in your browser menu choose <em>Install PocketScholar</em> (or <em>Add to Home Screen</em> on a phone). After the first online visit the app opens offline, and photo OCR works without internet. Generate still needs the cloud (or Nano on desktop Chrome) — only the note, the study pack, the Q&amp;A history and the photo scanner work offline.</li>
           </ol>
           <h3>To enable the cloud path (one-time, free)</h3>
           <ol>
@@ -601,6 +676,71 @@ export default function App() {
                   <StudyPanel key={pack.generatedAt} pack={pack} />
                 </Suspense>
               )}
+              {pack && (
+                <section className="qa" aria-label="Ask about this note">
+                  <div className="qa-head">
+                    <h2>Ask about this note</h2>
+                    {qaMessages.length > 0 && (
+                      <button className="qa-clear" onClick={() => void clearQa()} disabled={qaAsking}>
+                        Clear history
+                      </button>
+                    )}
+                  </div>
+                  <p className="hint">
+                    Answers come from this note first. If something is not in the note, the answer
+                    says so before answering from general knowledge.
+                  </p>
+                  <div className="qa-history">
+                    {qaMessages.map((m, i) => (
+                      <div key={i} className={`qa-msg qa-${m.role}`}>
+                        <p className="qa-text">{m.text}</p>
+                        {m.role === 'assistant' && m.source && m.latencyMs !== undefined && (
+                          <InferenceBadge
+                            source={m.source}
+                            modelName={m.modelName ?? ''}
+                            latencyMs={m.latencyMs}
+                          />
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  {qaStatus && (
+                    <p className="generating-status" role="status">
+                      {qaStatus}
+                    </p>
+                  )}
+                  {qaError && (
+                    <p className="error" role="alert">
+                      {qaError}
+                    </p>
+                  )}
+                  <div className="qa-input-row">
+                    <input
+                      className="qa-input"
+                      type="text"
+                      placeholder="Ask about this note…"
+                      value={qaQuestion}
+                      disabled={qaAsking}
+                      onChange={(e) => setQaQuestion(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') void askQa();
+                      }}
+                      aria-label="Ask a question about this note"
+                    />
+                    <button
+                      className="primary"
+                      onClick={() => void askQa()}
+                      disabled={qaAsking || !qaQuestion.trim()}
+                    >
+                      Ask
+                    </button>
+                  </div>
+                  <p className="hint">
+                    History is saved on this device, like your study packs. It is not synced to
+                    Firestore.
+                  </p>
+                </section>
+              )}
               {!pack && !generating && (
                 <p className="hint">
                   No study pack for this note yet. Press <strong>Generate study pack</strong> to get a
@@ -639,7 +779,8 @@ export default function App() {
 
       <footer className="footer">
         PocketScholar — built for #BuildHybridAI 2026 · Firebase AI Logic hybrid inference (Gemini Nano
-        on-device + Gemini cloud) · Photo OCR on-device (Tesseract.js) · Notes stay in your browser unless Firestore sync is configured.
+        on-device + Gemini cloud) · Photo OCR on-device (Tesseract.js) · Ask questions about your notes ·
+        Notes stay in your browser unless Firestore sync is configured.
       </footer>
     </div>
   );

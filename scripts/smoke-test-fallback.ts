@@ -6,7 +6,7 @@ Object.defineProperty(globalThis, 'navigator', { value: { onLine: false }, confi
 (globalThis as any).self = globalThis;
 (globalThis as any).indexedDB = undefined;
 
-import { generateStudyPack } from '../src/lib/ai.ts';
+import { askQuestion, generateStudyPack } from '../src/lib/ai.ts';
 
 const NOTE = `Photosynthesis
 
@@ -35,3 +35,20 @@ if (result.source !== 'local_fallback' || !quizOk || result.flashcards.length < 
   throw new Error('SMOKE TEST FAILED');
 }
 console.log('SMOKE TEST PASSED');
+
+// --- Q&A (same local extractive fallback, no Firebase configured) ---
+// In-note question: the answer must quote the note's equation sentence.
+const qaIn = await askQuestion(NOTE, 'What is the overall equation of photosynthesis?');
+console.log('qa in-note:', qaIn.source, '|', qaIn.answer.slice(0, 200));
+const qaInOk =
+  qaIn.source === 'local_fallback' && /6CO2/.test(qaIn.answer) && /C6H12O6/.test(qaIn.answer);
+console.log('qa in-note OK:', qaInOk);
+// Out-of-note question: the answer must say plainly it is not in the note.
+const qaOut = await askQuestion(NOTE, 'What is quantum computing?');
+console.log('qa out-of-note:', qaOut.source, '|', qaOut.answer.slice(0, 200));
+const qaOutOk = qaOut.source === 'local_fallback' && /doesn't seem to be in your note/i.test(qaOut.answer);
+console.log('qa out-of-note OK:', qaOutOk);
+if (!qaInOk || !qaOutOk) {
+  throw new Error('Q&A SMOKE TEST FAILED');
+}
+console.log('Q&A SMOKE TEST PASSED');

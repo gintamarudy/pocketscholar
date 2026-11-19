@@ -34,6 +34,8 @@ import { checkNanoAvailability, ON_DEVICE_CHAR_LIMIT } from './nano';
 import type {
   Flashcard,
   HybridStatus,
+  QaAnswer,
+  QaMessage,
   QuizQuestion,
   StudyPack,
   StudyPackResult,
@@ -478,4 +480,167 @@ export async function transcribePhotoCloud(image: Blob): Promise<string> {
     throw new Error('Cloud OCR found no text in this photo.');
   }
   return text;
+}
+
+// ---------------------------------------------------------------------------
+// Q&A about a note — photo -> note -> ask. Same hybrid routing as Generate:
+//   1. No Firebase config  -> local extractive answer (sentences from the
+//      note by keyword overlap; says plainly when the answer is not in it).
+//   2. Nano available + short note -> hybrid model, on-device preferred.
+//   3. Otherwise -> cloud model.
+// The answer is GROUNDED in the note: the prompt requires the model to
+// answer from the note only, and to start with "This is not in your note —"
+// when it has to answer from general knowledge instead.
+// ---------------------------------------------------------------------------
+
+export interface AskQuestionOptions {
+  /** Prior turns, oldest first; the last 6 are used as follow-up context. */
+  history?: QaMessage[];
+  onProgress?: (p: {
+    phase: 'checking' | 'generating';
+    route?: 'on-device' | 'cloud' | 'local-fallback';
+  }) => void;
+}
+
+function buildQaPrompt(noteText: string, question: string, history: QaMessage[]): string {
+  const historyBlock = history
+    .slice(-6)
+    .map((m) => `${m.role === 'user' ? 'Student' : 'Assistant'}: ${m.text}`)
+    .join('\n');
+  return `You are a study assistant helping a student understand their own study note.
+Answer the question using ONLY the note below.
+- If the answer is in the note, answer from the note in 2-4 short sentences.
+- If the answer is NOT in the note, start your reply with exactly: "This is not in your note — " and then answer briefly from general knowledge.
+- Do not invent facts about the note. If the note covers something close to the question, say what it does cover.
+- Answer in English.
+${historyBlock ? `\nPrevious questions and answers:\n${historyBlock}\n` : ''}
+--- STUDY NOTE ---
+${noteText}
+--- END NOTE ---
+Question: ${question}`;
+}
+
+/** Local extractive answer: the note sentences that best match the
+ * question's content words. No model is involved — the answer is always
+ * quoted from the note, or an honest "not in your note". */
+function extractiveAnswer(noteText: string, question: string): string {
+  const sentences = splitSentences(noteText);
+  const qWords = new Set(contentWords(question));
+  if (qWords.size === 0) {
+    return 'Please ask a question with a few content words so I can look it up in your note.';
+  }
+  const scored = sentences
+    .map((s) => ({ s, score: contentWords(s).filter((w) => qWords.has(w)).length }))
+    .filter((x) => x.score > 0)
+    .sort((a, b) => b.score - a.score);
+  if (scored.length === 0) {
+    const freq = new Map<string, number>();
+    for (const w of contentWords(noteText)) freq.set(w, (freq.get(w) ?? 0) + 1);
+    const topics = [...freq.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([w]) => w)
+      .join(', ');
+    return `This doesn't seem to be in your note. Your note is mostly about: ${topics}. Try asking about one of those, or add the missing information to the note first.`;
+  }
+  return `From your note: ${scored.slice(0, 3).map((x) => x.s).join(' ')}`;
+}
+
+export async function askQuestion(
+  noteText: string,
+  question: string,
+  opts: AskQuestionOptions = {},
+): Promise<QaAnswer> {
+  const startedAt = performance.now();
+  const text = noteText.trim();
+  const q = question.trim();
+  if (text.length < 50) {
+    throw new Error('Note is too short — write at least a few sentences first.');
+  }
+  if (!q) {
+    throw new Error('Type a question first.');
+  }
+
+  // Route 1: no Firebase project configured yet -> honest local fallback.
+  if (!isFirebaseConfigured()) {
+    opts.onProgress?.({ phase: 'generating', route: 'local-fallback' });
+    return {
+      answer: extractiveAnswer(text, q),
+      source: 'local_fallback',
+      modelName: 'Local fallback (extractive, no model)',
+      latencyMs: Math.round(performance.now() - startedAt),
+      routedReason:
+        'Firebase is not configured yet, so no model was called — the answer quotes the sentences in your note that best match the question (see SETUP.md to enable Gemini).',
+    };
+  }
+
+  const ai = await getAIClient();
+  if (!ai) throw new Error('Firebase AI Logic is unavailable (no Firebase config).');
+
+  opts.onProgress?.({ phase: 'checking' });
+  const nano = await checkNanoAvailability();
+  const promptText = buildQaPrompt(text, q, opts.history ?? []);
+  const shortEnough = promptText.length <= ON_DEVICE_CHAR_LIMIT;
+
+  let model: GenerativeModel;
+  let route: 'on-device' | 'cloud';
+  let routedReason: string;
+
+  if (nano === 'available' && shortEnough) {
+    route = 'on-device';
+    routedReason = `Gemini Nano is available in this browser and the note is short (${text.length.toLocaleString()} chars ≤ ${ON_DEVICE_CHAR_LIMIT.toLocaleString()}), so the hybrid model answers on-device first.`;
+    model = getGenerativeModel(ai, {
+      mode: InferenceMode.PREFER_ON_DEVICE,
+      inCloudParams: { model: CLOUD_MODEL },
+      onDeviceParams: {},
+    });
+    // MUST be called after a user gesture (the Ask click) and before the
+    // first generateContent call — same as generateStudyPack.
+    await model.initializeDeviceModel();
+  } else {
+    route = 'cloud';
+    routedReason =
+      nano === 'available'
+        ? `Note is long (${text.length.toLocaleString()} chars > ${ON_DEVICE_CHAR_LIMIT.toLocaleString()}), so the question goes to the cloud model instead of Gemini Nano.`
+        : `Gemini Nano is ${nano} in this browser, so the question goes to the cloud model.`;
+    model = getGenerativeModel(ai, { model: CLOUD_MODEL });
+  }
+
+  opts.onProgress?.({ phase: 'generating', route });
+  const prompt =
+    route === 'cloud' && promptText.length > CLOUD_CHAR_LIMIT
+      ? `${promptText.slice(0, CLOUD_CHAR_LIMIT)}\n\n[Note truncated to ${CLOUD_CHAR_LIMIT.toLocaleString()} characters for the cloud model.]`
+      : promptText;
+  const result = await model.generateContent(prompt);
+  const response = result.response;
+  const answer = response.text().trim();
+  if (!answer) {
+    throw new Error('The model returned an empty answer — try rephrasing the question.');
+  }
+
+  // The SDK tells us where inference actually ran. Trust it, not the route.
+  const reported = response.inferenceSource;
+  const source =
+    reported === InferenceSource.ON_DEVICE
+      ? 'on_device'
+      : reported === InferenceSource.IN_CLOUD
+        ? 'in_cloud'
+        : route === 'on-device'
+          ? 'on_device'
+          : 'in_cloud';
+  const sourceNote =
+    reported === undefined
+      ? ' (SDK did not report inferenceSource; source inferred from the route taken.)'
+      : '';
+
+  return {
+    answer,
+    source,
+    modelName:
+      source === 'on_device'
+        ? 'Gemini Nano (on-device)'
+        : `Gemini ${CLOUD_MODEL} (cloud)`,
+    latencyMs: Math.round(performance.now() - startedAt),
+    routedReason: routedReason + sourceNote,
+  };
 }

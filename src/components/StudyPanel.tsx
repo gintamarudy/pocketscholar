@@ -1,35 +1,8 @@
 // Study panel: shows the AI-generated study pack with its inference badge,
 // plus the interactive flashcard + quiz study modes.
 import { useMemo, useState } from 'react';
-import type { InferenceSourceKind, StudyPackResult } from '../lib/types';
-
-export function formatLatency(ms: number): string {
-  if (ms < 1000) return `${ms} ms`;
-  return `${(ms / 1000).toFixed(1)} s`;
-}
-
-/** The hybrid-inference badge. The source comes from the SDK's
- * `response.inferenceSource`, never from a guess — see lib/ai.ts. */
-export function InferenceBadge({ source, modelName, latencyMs }: {
-  source: InferenceSourceKind;
-  modelName: string;
-  latencyMs: number;
-}) {
-  const label =
-    source === 'on_device'
-      ? 'On-device (Gemini Nano)'
-      : source === 'in_cloud'
-        ? 'Cloud (Gemini)'
-        : 'Local fallback (extractive)';
-  const cls =
-    source === 'on_device' ? 'badge badge-device' : source === 'in_cloud' ? 'badge badge-cloud' : 'badge badge-local';
-  return (
-    <span className={cls} title={modelName}>
-      {source === 'on_device' ? '● ' : source === 'in_cloud' ? '☁ ' : '◐ '}
-      {label} · {formatLatency(latencyMs)}
-    </span>
-  );
-}
+import type { StudyPackResult } from '../lib/types';
+import { InferenceBadge } from './InferenceBadge';
 
 type Tab = 'summary' | 'flashcards' | 'quiz';
 

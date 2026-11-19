@@ -47,6 +47,35 @@ export interface StoredStudyPack extends StudyPackResult {
   noteId: string;
 }
 
+/** One turn of the per-note Q&A history. Assistant messages carry the
+ * source badge (same kinds as the Generate badge, never guessed). */
+export interface QaMessage {
+  role: 'user' | 'assistant';
+  text: string;
+  source?: InferenceSourceKind;
+  modelName?: string;
+  latencyMs?: number;
+  askedAt: number;
+}
+
+/** Q&A history for one note. Local-only, like study packs — the Firestore
+ * sync layer mirrors notes only and is left untouched. */
+export interface QaThread {
+  noteId: string;
+  messages: QaMessage[];
+  updatedAt: number;
+}
+
+/** One AI answer to a question about a note. Same routing + source badge
+ * as Generate (on-device / cloud / local fallback, read from the SDK). */
+export interface QaAnswer {
+  answer: string;
+  source: InferenceSourceKind;
+  modelName: string;
+  latencyMs: number;
+  routedReason: string;
+}
+
 /** Result of probing Chrome's on-device model (Prompt API / LanguageModel). */
 export type NanoAvailability =
   | 'available'
