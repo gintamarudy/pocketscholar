@@ -52,6 +52,7 @@ export default function App() {
     isFirebaseConfigured() ? (navigator.onLine ? 'synced' : 'offline') : 'local-only',
   );
   const [generating, setGenerating] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
   const [progress, setProgress] = useState<GenerateProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showSetup, setShowSetup] = useState(false);
@@ -244,6 +245,29 @@ export default function App() {
   const willUseNano =
     nano === 'available' && content.length <= ON_DEVICE_CHAR_LIMIT && content.length >= 50;
 
+  // Live elapsed timer while a generation runs (on-device can take 86 s+).
+  // The route label uses the real route once ai.ts reports it, and the
+  // pre-flight prediction while it is still checking/downloading.
+  useEffect(() => {
+    if (!generating) return;
+    setElapsed(0);
+    const t = window.setInterval(() => setElapsed((s) => s + 1), 1000);
+    return () => window.clearInterval(t);
+  }, [generating]);
+
+  const generatingRouteLabel =
+    progress?.phase === 'generating'
+      ? progress.route === 'on-device'
+        ? 'On-device (Gemini Nano)'
+        : progress.route === 'cloud'
+          ? 'Cloud (Gemini)'
+          : 'Local fallback'
+      : willUseNano
+        ? 'On-device (Gemini Nano)'
+        : firebaseConfigured
+          ? 'Cloud (Gemini)'
+          : 'Local fallback';
+
   return (
     <div className="app">
       <header className="topbar">
@@ -427,6 +451,11 @@ export default function App() {
                   <span>Downloading on-device model… {Math.round((progress.downloadProgress ?? 0) * 100)}%</span>
                   <progress value={progress.downloadProgress ?? 0} max={1} />
                 </div>
+              )}
+              {generating && (
+                <p className="generating-status" role="status">
+                  Generating… {elapsed}s · {generatingRouteLabel}
+                </p>
               )}
               {error && (
                 <p className="error" role="alert">

@@ -27,3 +27,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Generated smoke-test bundle (regenerated + deleted by scripts/run-smoke-test.mjs)
+.smoke-test.mjs

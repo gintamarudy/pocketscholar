@@ -130,7 +130,6 @@ code {
   .sidebar { position: static; }
   .topbar { padding: 12px 14px; }
   .layout { padding: 12px 14px; }
-  .editor-pane { padding: 14px; }
 }
 @media (max-width: 560px) {
   .brand h1 { font-size: 19px; }
@@ -139,7 +138,6 @@ code {
   .editor-bar .primary { flex: 1 1 100%; }
   .flashcard-inner { min-height: 180px; }
   .flashcard-face p { font-size: 16px; }
-  .title-input { font-size: 19px; }
   .welcome h2 { font-size: 22px; }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -251,6 +249,7 @@ code {
 }
 .download-bar { display: flex; gap: 12px; align-items: center; margin-top: 12px; font-size: 13px; }
 .download-bar progress { flex: 1; }
+.generating-status { margin: 10px 0 0; color: var(--muted); font-size: 13px; }
 .error {
   background: #fce8e6;
   color: var(--danger);
@@ -351,4 +350,15 @@ code {
   font-size: 13px;
   border-top: 1px solid var(--border);
   background: var(--surface);
+}
+
+/* Mobile overrides — these MUST stay at the end of the file: they have the
+   same specificity as the base .editor-pane / .title-input rules above, so
+   an earlier media block would lose to the later base rule and silently do
+   nothing (that is how the 19px title size was dead until this fix). */
+@media (max-width: 800px) {
+  .editor-pane { padding: 14px; }
+}
+@media (max-width: 560px) {
+  .title-input { font-size: 19px; }
 }

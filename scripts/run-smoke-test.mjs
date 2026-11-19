@@ -32,9 +32,8 @@ await build({
   logLevel: 'error',
 });
 
-try {
-  const res = spawnSync('node', [out], { stdio: 'inherit', cwd: root });
-  process.exit(res.status ?? 1);
-} finally {
-  rmSync(out, { force: true });
-}
+const res = spawnSync('node', [out], { stdio: 'inherit', cwd: root });
+// Delete the generated bundle BEFORE exiting: process.exit() below would
+// bypass a finally block, which is how the stale bundle got committed once.
+rmSync(out, { force: true });
+process.exit(res.status ?? 1);
