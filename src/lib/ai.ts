@@ -430,3 +430,52 @@ export async function generateStudyPack(
     generatedAt: Date.now(),
   };
 }
+
+// ---------------------------------------------------------------------------
+// Cloud photo transcription (Gemini vision) — the OPTIONAL accuracy
+// fallback for photo OCR. Only called when the user explicitly taps
+// "Retry with cloud" after an on-device scan: unlike Tesseract, this sends
+// the image to Google, and the UI says so. Same free-tier cloud model as
+// generateStudyPack; the image should already be downscaled by
+// lib/ocr.ts preparePhoto() before it gets here.
+// ---------------------------------------------------------------------------
+
+function blobToBase64(blob: Blob): Promise<string> {
+  return blob.arrayBuffer().then((buf) => {
+    const bytes = new Uint8Array(buf);
+    let binary = '';
+    const CHUNK = 0x8000;
+    for (let i = 0; i < bytes.length; i += CHUNK) {
+      binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+    }
+    return btoa(binary);
+  });
+}
+
+/**
+ * Transcribe all text in a photo with the cloud Gemini model. Throws when
+ * Firebase is not configured or when no text is found.
+ */
+export async function transcribePhotoCloud(image: Blob): Promise<string> {
+  const ai = await getAIClient();
+  if (!ai) {
+    throw new Error('Firebase is not configured — cloud OCR needs the Firebase project.');
+  }
+  const model = getGenerativeModel(ai, { model: CLOUD_MODEL });
+  const base64 = await blobToBase64(image);
+  const result = await model.generateContent([
+    {
+      type: 'text',
+      text: 'Transcribe ALL text visible in this photo exactly as written, preserving line breaks. Do not add commentary, explanations, or formatting beyond the text itself. If no text is visible, reply with an empty string.',
+    },
+    {
+      type: 'inlineData',
+      inlineData: { mimeType: image.type || 'image/jpeg', data: base64 },
+    },
+  ]);
+  const text = result.response.text().trim();
+  if (!text) {
+    throw new Error('Cloud OCR found no text in this photo.');
+  }
+  return text;
+}

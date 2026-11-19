@@ -352,6 +352,13 @@ code {
   background: var(--surface);
 }
 
+/* Photo OCR (Tesseract on-device): progress bar, scanned-photo thumbnail,
+   and the result line under the editor. */
+.ocr-bar { display: flex; gap: 12px; align-items: center; margin-top: 12px; font-size: 13px; }
+.ocr-bar progress { flex: 1; }
+.ocr-preview { margin-top: 12px; max-height: 140px; max-width: 100%; border: 1px solid var(--border); border-radius: 8px; }
+.ocr-result { margin-top: 12px; font-size: 13px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; }
+
 /* Mobile overrides — these MUST stay at the end of the file: they have the
    same specificity as the base .editor-pane / .title-input rules above, so
    an earlier media block would lose to the later base rule and silently do

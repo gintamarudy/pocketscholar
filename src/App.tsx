@@ -61,7 +61,18 @@ export default function App() {
   const [sampleId, setSampleId] = useState(SAMPLE_NOTES[0].id);
   const deepLinkHandled = useRef(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const photoRef = useRef<HTMLInputElement>(null);
   const saveTimer = useRef<number | undefined>(undefined);
+  // Photo OCR (Tesseract on-device, or cloud Gemini on retry).
+  const [ocrWorking, setOcrWorking] = useState(false);
+  const [ocrProgress, setOcrProgress] = useState<{ label: string; value: number } | null>(null);
+  const [ocrInfo, setOcrInfo] = useState<{
+    confidence: number | null;
+    words: number;
+    source: 'on-device' | 'cloud';
+    fileName: string;
+  } | null>(null);
+  const [ocrPhoto, setOcrPhoto] = useState<{ blob: Blob; previewUrl: string } | null>(null);
 
   const selected = useMemo(
     () => notes.find((n) => n.id === selectedId) ?? null,
@@ -210,6 +221,83 @@ export default function App() {
     [createNote],
   );
 
+  // Photo -> text (OCR). On-device first (Tesseract.js, English +
+  // Indonesian); the photo never leaves the device on this path. The
+  // recognised text lands in a NEW note's textarea so the user can correct
+  // it before Generate — OCR misreads, especially handwriting.
+  const scanPhoto = useCallback(
+    async (file: File) => {
+      if (!file.type.startsWith('image/')) {
+        setError('Please choose an image file (photo of a printed page).');
+        return;
+      }
+      setError(null);
+      setOcrInfo(null);
+      setOcrWorking(true);
+      setOcrProgress({ label: 'Preparing photo…', value: 0 });
+      try {
+        const { preparePhoto, recognizePhoto } = await import('./lib/ocr');
+        const prepared = await preparePhoto(file);
+        setOcrPhoto((prev) => {
+          if (prev) URL.revokeObjectURL(prev.previewUrl);
+          return { blob: prepared.blob, previewUrl: prepared.previewUrl };
+        });
+        const base = file.name
+          .replace(/\.[^.]+$/, '')
+          .replace(/[-_]+/g, ' ')
+          .trim();
+        await createNote('', base ? `Scanned: ${base}` : 'Scanned photo');
+        const result = await recognizePhoto(prepared.blob, (p) => {
+          const label =
+            p.phase === 'loading-engine'
+              ? 'Loading OCR engine…'
+              : p.phase === 'loading-language'
+                ? 'Downloading OCR language data (first scan only)…'
+                : 'Reading text from photo…';
+          setOcrProgress({ label, value: p.progress });
+        });
+        setContent((prev) => (prev.trim() ? `${prev.trim()}\n\n${result.text}` : result.text));
+        setOcrInfo({
+          confidence: result.confidence,
+          words: result.words,
+          source: 'on-device',
+          fileName: file.name,
+        });
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Photo scan failed.');
+      } finally {
+        setOcrWorking(false);
+        setOcrProgress(null);
+      }
+    },
+    [createNote],
+  );
+
+  // Optional cloud re-read of the same photo with Gemini vision (better
+  // accuracy on handwriting and messy photos). Sends the image to Google —
+  // the button says so — and replaces the textarea text.
+  const retryCloudOcr = useCallback(async () => {
+    if (!ocrPhoto || ocrWorking) return;
+    setError(null);
+    setOcrWorking(true);
+    setOcrProgress({ label: 'Reading photo with cloud Gemini…', value: 0.5 });
+    try {
+      const { transcribePhotoCloud } = await import('./lib/ai');
+      const text = await transcribePhotoCloud(ocrPhoto.blob);
+      setContent(text);
+      setOcrInfo((prev) =>
+        prev
+          ? { ...prev, source: 'cloud', confidence: null, words: text.split(/\s+/).length }
+          : null,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Cloud OCR failed.');
+    } finally {
+      setOcrWorking(false);
+      setOcrProgress(null);
+    }
+  }, [ocrPhoto, ocrWorking]);
+
   const onGenerate = useCallback(async () => {
     if (!selectedId || generating) return;
     setGenerating(true);
@@ -298,7 +386,7 @@ export default function App() {
         <section className="setup-panel">
           <h2>How PocketScholar works</h2>
           <ol>
-            <li><strong>Write or import a note</strong> (.txt / .md). It is saved in your browser (IndexedDB) and works fully offline.</li>
+            <li><strong>Write, import, or scan a note</strong> — type it, import a .txt / .md file, or <strong>scan a photo</strong> of a printed page (on-device OCR, English + Indonesian; works offline after the first scan). It is saved in your browser (IndexedDB) and works fully offline.</li>
             <li><strong>Generate a study pack</strong> — summary, key points, flashcards and a quiz. Routing is automatic and always labelled:
               <ul>
                 <li><strong>On-device (Gemini Nano)</strong> — when Chrome on desktop has the model available and the note is short (≤ {ON_DEVICE_CHAR_LIMIT.toLocaleString()} characters). Your note never leaves the device.</li>
@@ -329,6 +417,7 @@ export default function App() {
               + New note
             </button>
             <button onClick={() => fileRef.current?.click()}>Import .txt/.md</button>
+            <button onClick={() => photoRef.current?.click()}>📷 Scan photo</button>
             <input
               ref={fileRef}
               type="file"
@@ -337,6 +426,18 @@ export default function App() {
               onChange={(e) => {
                 const f = e.target.files?.[0];
                 if (f) void importFile(f);
+                e.target.value = '';
+              }}
+            />
+            <input
+              ref={photoRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              hidden
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) void scanPhoto(f);
                 e.target.value = '';
               }}
             />
@@ -446,6 +547,39 @@ export default function App() {
                   {generating ? 'Generating…' : '✨ Generate study pack'}
                 </button>
               </div>
+              {ocrProgress && (
+                <div className="ocr-bar" role="status">
+                  <span>
+                    {ocrProgress.label} {Math.round(ocrProgress.value * 100)}%
+                  </span>
+                  <progress value={ocrProgress.value} max={1} />
+                </div>
+              )}
+              {ocrPhoto && !ocrWorking && (
+                <img className="ocr-preview" src={ocrPhoto.previewUrl} alt="Scanned photo" />
+              )}
+              {ocrInfo && !ocrWorking && (
+                <p className="ocr-result" role="status">
+                  <span>
+                    Scanned from photo “{ocrInfo.fileName}” ·{' '}
+                    {ocrInfo.source === 'on-device'
+                      ? `On-device OCR (Tesseract, English + Indonesian)${
+                          ocrInfo.confidence !== null ? ` · confidence ${ocrInfo.confidence}%` : ''
+                        }`
+                      : 'Cloud OCR (Gemini vision)'}{' '}
+                    · {ocrInfo.words.toLocaleString()} words — check the text above, then Generate.
+                  </span>
+                  {ocrInfo.source === 'on-device' && firebaseConfigured && navigator.onLine && (
+                    <button
+                      className="link-btn"
+                      onClick={() => void retryCloudOcr()}
+                      title="Sends the photo to Gemini in the cloud — better accuracy on handwriting and messy photos, but the image leaves your device."
+                    >
+                      Retry with cloud (Gemini)
+                    </button>
+                  )}
+                </p>
+              )}
               {progress?.phase === 'downloading-model' && (
                 <div className="download-bar" role="status">
                   <span>Downloading on-device model… {Math.round((progress.downloadProgress ?? 0) * 100)}%</span>
@@ -479,7 +613,8 @@ export default function App() {
             <div className="welcome">
               <h2>Your notes, studied by AI — even offline.</h2>
               <p>
-                PocketScholar turns study notes into summaries, flashcards and quizzes. Short notes run
+                PocketScholar turns study notes into summaries, flashcards and quizzes. Type a note,
+                import a file, or scan a photo of a printed page — short notes run
                 entirely on your device with Gemini Nano; longer notes fall back to Gemini in the cloud
                 via Firebase AI Logic. Every result tells you where it ran and how long it took.
               </p>
@@ -504,7 +639,7 @@ export default function App() {
 
       <footer className="footer">
         PocketScholar — built for #BuildHybridAI 2026 · Firebase AI Logic hybrid inference (Gemini Nano
-        on-device + Gemini cloud) · Notes stay in your browser unless Firestore sync is configured.
+        on-device + Gemini cloud) · Photo OCR on-device (Tesseract.js) · Notes stay in your browser unless Firestore sync is configured.
       </footer>
     </div>
   );
