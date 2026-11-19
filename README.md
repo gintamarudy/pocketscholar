@@ -4,7 +4,7 @@ Offline-first AI study notes — built for **#BuildHybridAI 2026** (Firebase AI 
 
 **Live demo:** https://pocketscholar-198d8.web.app
 
-Paste or type study notes (or import a `.txt` / `.md` file) and PocketScholar turns them into a **summary, key points, flashcards, and a multiple-choice quiz**. Notes are stored locally in IndexedDB and work fully offline; when Firebase is configured and you are online, they sync to Firestore.
+Paste or type study notes (or import a `.txt` / `.md` file, or scan a photo of a printed page) and PocketScholar turns them into a **summary, key points, flashcards, and a multiple-choice quiz**. Notes are stored locally in IndexedDB and work fully offline; when Firebase is configured and you are online, they sync to Firestore.
 
 ## Why hybrid inference matters here
 
@@ -26,6 +26,7 @@ The label is read from the SDK's `response.inferenceSource` (`ON_DEVICE` / `IN_C
 - **Firebase AI Logic** (`firebase/ai` v13): `getAI` + `GoogleAIBackend`, `getGenerativeModel` with `InferenceMode.PREFER_ON_DEVICE`, `initializeDeviceModel()` (called after the Generate click, as Chrome requires), structured JSON output via `Schema` (on-device `responseConstraint` + cloud `responseMimeType: application/json`)
 - **Firestore** for sync, **App Check** (debug provider in dev, reCAPTCHA Enterprise in prod)
 - **IndexedDB** (hand-rolled, zero-dep) for offline-first notes + saved study packs
+- **Tesseract.js v6** (self-hosted worker + LSTM cores + eng/ind traineddata under `public/tesseract/`) for on-device photo OCR; optional cloud re-read with Gemini vision (`transcribePhotoCloud` in `src/lib/ai.ts`)
 
 ## Run it
 

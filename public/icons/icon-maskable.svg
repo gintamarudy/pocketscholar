@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <!-- PocketScholar maskable icon: full-bleed background, art kept inside the
+       center 80% safe zone (maskable icons are cropped by the OS). -->
+  <rect width="512" height="512" fill="#1a73e8"/>
+  <g transform="translate(51.2,51.2) scale(0.8)">
+    <path d="M398 62 L410 98 L446 110 L410 122 L398 158 L386 122 L350 110 L386 98 Z" fill="#facc15"/>
+    <path d="M92 96 L99 116 L119 123 L99 130 L92 150 L85 130 L65 123 L85 116 Z" fill="#ffffff" opacity="0.85"/>
+    <path d="M256 218 C214 192 150 186 104 200 L104 372 C150 358 214 364 256 390 C298 364 362 358 408 372 L408 200 C362 186 298 192 256 218 Z" fill="#ffffff"/>
+    <path d="M256 218 L256 390" stroke="#1a73e8" stroke-width="10" stroke-linecap="round"/>
+    <g stroke="#1a73e8" stroke-width="12" stroke-linecap="round" opacity="0.75">
+      <line x1="128" y1="248" x2="224" y2="240"/>
+      <line x1="128" y1="282" x2="224" y2="274"/>
+      <line x1="128" y1="316" x2="200" y2="310"/>
+      <line x1="288" y1="240" x2="384" y2="248"/>
+      <line x1="288" y1="274" x2="384" y2="282"/>
+      <line x1="312" y1="310" x2="384" y2="316"/>
+    </g>
+  </g>
+</svg>
