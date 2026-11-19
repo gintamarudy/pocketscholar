@@ -79,13 +79,11 @@ npx firebase deploy --only hosting,firestore:rules
 `firebase.json` and `firestore.rules` are included. The deployed app serves the
 `dist/` build as a single-page app.
 
-## What is NOT tested yet
+## What is verified (19 Nov 2026)
 
-- **Cloud inference end-to-end** — needs the Firebase project from step 2.
-  The code path is real (`firebase/ai`, `PREFER_ON_DEVICE` + cloud fallback)
-  but untested against a live backend until the project exists.
-- **Real on-device Nano generation** — needs Chrome desktop with the model
-  downloaded (step 4). The routing, `initializeDeviceModel()` call, and
-  `inferenceSource` badge are implemented; live verification is planned in M3
-  on a desktop Chrome (GitHub Codespace).
-- **Firestore sync end-to-end** — needs the project + deployed rules.
+- **Cloud inference end-to-end** — PASS (retest ×2; badge reads
+  **Cloud (Gemini)**).
+- **Real on-device Nano generation** — PASS (M3; badge
+  **On-device (Gemini Nano)**, 86.5 s on the test machine).
+- **Firestore sync end-to-end** — PASS (push + pull across two
+  browser profiles).

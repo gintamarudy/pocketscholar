@@ -2,6 +2,8 @@
 
 Offline-first AI study notes — built for **#BuildHybridAI 2026** (Firebase AI Logic), targeting **Best Web/Chrome App**.
 
+**Live demo:** https://pocketscholar-198d8.web.app
+
 Paste or type study notes (or import a `.txt` / `.md` file) and PocketScholar turns them into a **summary, key points, flashcards, and a multiple-choice quiz**. Notes are stored locally in IndexedDB and work fully offline; when Firebase is configured and you are online, they sync to Firestore.
 
 ## Why hybrid inference matters here
@@ -15,6 +17,8 @@ Students with unstable internet still need AI study help. PocketScholar routes e
 | No Firebase project configured yet | Local extractive fallback (no model called) | **Local fallback (extractive)** |
 
 The label is read from the SDK's `response.inferenceSource` (`ON_DEVICE` / `IN_CLOUD`) — never guessed from the route requested. Every result also shows its latency and why that route was chosen.
+
+> **Honest latency note:** on-device Nano is *not* fast on modest hardware — in our verification run (M3, 19 Nov 2026) a short sample note took **86.5 seconds** on-device, versus a few seconds in the cloud. On-device wins on privacy and offline use, not on speed.
 
 ## Tech
 
@@ -34,6 +38,14 @@ npm run preview    # serve the production build locally
 
 No Firebase project is needed to run the app: without config it works fully local-only, with the clearly labelled extractive fallback. To enable real Gemini inference, follow [SETUP.md](SETUP.md).
 
+## Configure your own Firebase project
+
+```bash
+cp .env.example .env   # then fill in the six VITE_FIREBASE_* values
+```
+
+Copy the values from your Firebase project: console → Project settings → Your apps → Web app → `firebaseConfig`. `.env` is git-ignored and never committed; `.env.example` lists only the key names, with no values. See [SETUP.md](SETUP.md) for the full guide (including the App Check debug token for local dev and reCAPTCHA v3 for production).
+
 ## Screenshots
 
 Real-UI screenshots (headless Chromium via CDP — no `google-chrome` binary
@@ -49,6 +61,9 @@ on this VM, the Playwright-cached Chromium is used instead) live in
 | `05-study-quiz-desktop.png` | Quiz mode with feedback |
 | `06-welcome-mobile.png` | Welcome screen, mobile 390×844 |
 | `07-study-mobile.png` | Study pack, mobile 390×844 |
+| `08-cloud-generate-desktop.png` | Cloud generation, desktop |
+| `09-firestore-pull-desktop.png` | Firestore pull verification, desktop |
+| `10-cloud-badge-desktop.png` | Cloud badge, desktop |
 
 Regenerate them with the dev server + headless Chromium running (see
 `scripts/screenshot.mjs` for the exact launch command):

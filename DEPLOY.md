@@ -1,8 +1,9 @@
 # PocketScholar — Deploy guide (Firebase Hosting, free Spark plan)
 
-Nothing here costs money and nothing is deployed yet: the Firebase project
-does not exist at the time of writing. This file is the checklist to run
-the moment the project is created.
+Nothing here costs money. The Firebase project **pocketscholar-198d8**
+(Spark plan) exists and the app is deployed at
+https://pocketscholar-198d8.web.app. This file is the checklist to
+(re)deploy it — run the steps below the moment anything changes.
 
 ## 0. Prerequisites
 
@@ -58,7 +59,7 @@ cloud inference fails.
 **Production (the deployed site):**
 
 1. Console → **Security → App Check** → register a **reCAPTCHA v3** site
-   for your Hosting domain (`<project>.web.app`) and copy the site key.
+   for your Hosting domain (`pocketscholar-198d8.web.app`) and copy the site key.
 2. Add it to `.env` (production builds use the reCAPTCHA v3 provider):
 
    ```ini
@@ -90,7 +91,7 @@ What gets deployed:
 
 Verify after deploy:
 
-1. Open `https://<project>.web.app` — the app loads, welcome screen shows.
+1. Open `https://pocketscholar-198d8.web.app` — the app loads, welcome screen shows.
 2. Load a sample note → **Generate study pack** → badge reads
    **Cloud (Gemini)** with a latency; open a second browser/device and
    confirm the note appears there after a reload (Firestore sync).
@@ -104,9 +105,9 @@ Verify after deploy:
 The deployed app accepts `?sample=<id>` to open a sample note directly
 (useful for the demo video and for judges):
 
-- `https://<project>.web.app/?sample=photosynthesis`
-- `https://<project>.web.app/?sample=newtons-laws`
-- `https://<project>.web.app/?sample=french-revolution`
+- `https://pocketscholar-198d8.web.app/?sample=photosynthesis`
+- `https://pocketscholar-198d8.web.app/?sample=newtons-laws`
+- `https://pocketscholar-198d8.web.app/?sample=french-revolution`
 
 ## 5. Rollback / redeploy
 
@@ -115,9 +116,12 @@ Hosting keeps every release: `npx firebase hosting:releases:list` and
 to roll back. A normal redeploy is just `npm run build` +
 `npx firebase deploy --only hosting` again.
 
-## What is still untested (needs the project)
+## What is verified (19 Nov 2026)
 
-- Cloud inference end-to-end (badge + `inferenceSource` from the live SDK).
-- Firestore sync end-to-end + App Check debug flow (steps 2–3 above).
-- Real on-device Nano generation (planned verification in M3, GitHub
-  Codespace with Chrome desktop).
+- Cloud inference end-to-end — **PASS** (retest ×2, badge reads
+  **Cloud (Gemini)** with `inferenceSource` from the live SDK).
+- Firestore sync end-to-end + App Check debug flow — **PASS**
+  (push + pull across two browser profiles).
+- Real on-device Nano generation — **PASS** (M3, 19 Nov 2026; short
+  sample note, badge **On-device (Gemini Nano)**, 86.5 s latency on
+  the test machine — see README for the honest latency note).
