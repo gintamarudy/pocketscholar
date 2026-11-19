@@ -95,7 +95,10 @@ try {
 
   await send('Page.navigate', { url: `${BASE}/` });
   await waitFor(`document.querySelector('#root')?.children.length > 0`, 20000, 'app mount (2nd)');
-  // Open the seeded note from the sidebar.
+  // Open the seeded note from the sidebar — wait for the note list to render
+  // first (notes load async from IndexedDB + Firestore pull; clicking before
+  // the list appears silently does nothing and the Q&A box never shows).
+  if (!(await waitFor(`[...document.querySelectorAll('.note-item')].some(b => b.textContent.includes('Q&A test'))`, 20000, 'seeded note in sidebar'))) throw new Error('seeded note never appeared');
   await evalJs(`[...document.querySelectorAll('.note-item')].find(b => b.textContent.includes('Q&A test'))?.click()`);
   if (!(await waitFor(`document.querySelector('.qa') != null`, 15000, 'Q&A section'))) throw new Error('Q&A section did not render');
   ok('Q&A box renders below the study pack');
