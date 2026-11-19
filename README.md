@@ -24,7 +24,7 @@ The label is read from the SDK's `response.inferenceSource` (`ON_DEVICE` / `IN_C
 
 - **Vite + React + TypeScript**
 - **Firebase AI Logic** (`firebase/ai` v13): `getAI` + `GoogleAIBackend`, `getGenerativeModel` with `InferenceMode.PREFER_ON_DEVICE`, `initializeDeviceModel()` (called after the Generate click, as Chrome requires), structured JSON output via `Schema` (on-device `responseConstraint` + cloud `responseMimeType: application/json`)
-- **Firestore** for sync, **App Check** (debug provider in dev, reCAPTCHA v3 in prod)
+- **Firestore** for sync, **App Check** (debug provider in dev, reCAPTCHA Enterprise in prod)
 - **IndexedDB** (hand-rolled, zero-dep) for offline-first notes + saved study packs
 
 ## Run it
@@ -44,7 +44,7 @@ No Firebase project is needed to run the app: without config it works fully loca
 cp .env.example .env   # then fill in the six VITE_FIREBASE_* values
 ```
 
-Copy the values from your Firebase project: console → Project settings → Your apps → Web app → `firebaseConfig`. `.env` is git-ignored and never committed; `.env.example` lists only the key names, with no values. See [SETUP.md](SETUP.md) for the full guide (including the App Check debug token for local dev and reCAPTCHA v3 for production).
+Copy the values from your Firebase project: console → Project settings → Your apps → Web app → `firebaseConfig`. `.env` is git-ignored and never committed; `.env.example` lists only the key names, with no values. See [SETUP.md](SETUP.md) for the full guide (including the App Check debug token for local dev and reCAPTCHA Enterprise for production).
 
 ## Screenshots
 

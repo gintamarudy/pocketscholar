@@ -39,7 +39,7 @@ initializing App Check (see `src/lib/firebase.ts`). On first load:
 4. Reload the app. Cloud inference now works from localhost.
 
 For the deployed site, set `VITE_RECAPTCHA_SITE_KEY` in `.env` (production builds
-use the reCAPTCHA v3 provider) and register the site in the console.
+use the reCAPTCHA Enterprise provider) and register the site in the console.
 
 Reference: https://firebase.google.com/docs/app-check/web/debug-provider
 

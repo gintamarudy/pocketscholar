@@ -58,9 +58,9 @@ cloud inference fails.
 
 **Production (the deployed site):**
 
-1. Console → **Security → App Check** → register a **reCAPTCHA v3** site
-   for your Hosting domain (`pocketscholar-198d8.web.app`) and copy the site key.
-2. Add it to `.env` (production builds use the reCAPTCHA v3 provider):
+1. Console → **Security → App Check** → register a **reCAPTCHA Enterprise**
+   site for your Hosting domain (`pocketscholar-198d8.web.app`) and copy the site key.
+2. Add it to `.env` (production builds use the reCAPTCHA Enterprise provider):
 
    ```ini
    VITE_RECAPTCHA_SITE_KEY=...

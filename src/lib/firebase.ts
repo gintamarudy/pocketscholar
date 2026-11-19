@@ -38,11 +38,17 @@ export async function getFirebaseApp(): Promise<FirebaseApp | null> {
   // SDK print a debug token in the console and use it for every token
   // request (the provider passed here is then unused); register that token
   // in the Firebase console under App Check > Apps > Manage debug tokens
-  // (see SETUP.md). In production builds the reCAPTCHA v3 provider is used
-  // instead — set VITE_RECAPTCHA_SITE_KEY in .env for the deployed site.
+  // (see SETUP.md). In production builds the reCAPTCHA Enterprise
+  // (Fraud Defense) provider is used instead — set VITE_RECAPTCHA_SITE_KEY
+  // in .env for the deployed site. NOTE: reCAPTCHA v3 Classic is deprecated
+  // and Google no longer allows registering Classic keys for new apps
+  // (since Q3 2024); the Enterprise key is registered in the console under
+  // App Check > Fraud Defense (free tier: 10,000 assessments/month, no
+  // billing). Do NOT use a Classic v3 key here — App Check registration
+  // with it cannot be completed.
   // (AppCheckOptions requires a provider, hence the CustomProvider
   // placeholder in dev; it is never called while debug mode is enabled.)
-  const { initializeAppCheck, CustomProvider, ReCaptchaV3Provider } = await import(
+  const { initializeAppCheck, CustomProvider, ReCaptchaEnterpriseProvider } = await import(
     'firebase/app-check'
   );
   if (import.meta.env.DEV) {
@@ -56,7 +62,7 @@ export async function getFirebaseApp(): Promise<FirebaseApp | null> {
     });
   } else if (import.meta.env.VITE_RECAPTCHA_SITE_KEY) {
     initializeAppCheck(app, {
-      provider: new ReCaptchaV3Provider(import.meta.env.VITE_RECAPTCHA_SITE_KEY),
+      provider: new ReCaptchaEnterpriseProvider(import.meta.env.VITE_RECAPTCHA_SITE_KEY),
       isTokenAutoRefreshEnabled: true,
     });
   }
