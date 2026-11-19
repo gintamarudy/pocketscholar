@@ -66,6 +66,10 @@ export default function App() {
   const deepLinkHandled = useRef(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const photoRef = useRef<HTMLInputElement>(null);
+  // Separate input WITHOUT capture: on Chrome Android, capture="environment"
+  // forces the camera with no gallery choice, so a photo picked from the
+  // gallery (e.g. a screenshot of an assignment) needs its own input.
+  const uploadPhotoRef = useRef<HTMLInputElement>(null);
   const saveTimer = useRef<number | undefined>(undefined);
   // Photo OCR (Tesseract on-device, or cloud Gemini on retry).
   const [ocrWorking, setOcrWorking] = useState(false);
@@ -459,7 +463,7 @@ export default function App() {
         <section className="setup-panel">
           <h2>How PocketScholar works</h2>
           <ol>
-            <li><strong>Write, import, or scan a note</strong> — type it, import a .txt / .md file, or <strong>scan a photo</strong> of a printed page (on-device OCR, English + Indonesian; works offline after the first scan). It is saved in your browser (IndexedDB) and works fully offline.</li>
+            <li><strong>Write, import, or scan a note</strong> — type it, import a .txt / .md file, <strong>scan a photo</strong> of a printed page with the camera, or <strong>upload a photo</strong> from your gallery (e.g. a screenshot of an assignment). Both photo paths use on-device OCR, English + Indonesian, and work offline after the first scan. It is saved in your browser (IndexedDB) and works fully offline.</li>
             <li><strong>Generate a study pack</strong> — summary, key points, flashcards and a quiz. Routing is automatic and always labelled:
               <ul>
                 <li><strong>On-device (Gemini Nano)</strong> — when Chrome on desktop has the model available and the note is short (≤ {ON_DEVICE_CHAR_LIMIT.toLocaleString()} characters). Your note never leaves the device.</li>
@@ -493,6 +497,7 @@ export default function App() {
             </button>
             <button onClick={() => fileRef.current?.click()}>Import .txt/.md</button>
             <button onClick={() => photoRef.current?.click()}>📷 Scan photo</button>
+            <button onClick={() => uploadPhotoRef.current?.click()}>🖼️ Upload photo</button>
             <input
               ref={fileRef}
               type="file"
@@ -509,6 +514,17 @@ export default function App() {
               type="file"
               accept="image/*"
               capture="environment"
+              hidden
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) void scanPhoto(f);
+                e.target.value = '';
+              }}
+            />
+            <input
+              ref={uploadPhotoRef}
+              type="file"
+              accept="image/*"
               hidden
               onChange={(e) => {
                 const f = e.target.files?.[0];
