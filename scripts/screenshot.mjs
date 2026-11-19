@@ -170,7 +170,7 @@ async function main() {
 
   // 3. Study pack: click Generate, wait for the panel, summary tab.
   await clickButton(cdp, tab.sessionId, 'Generate study pack');
-  await waitFor(cdp, tab.sessionId, `!!document.querySelector('.study')`);
+  await waitFor(cdp, tab.sessionId, `!!document.querySelector('.study')`, 90000); // cloud can take 16 s+ via proxy — 15 s default timed out once
   await sleep(500);
   await shot(cdp, tab.sessionId, '03-study-summary-desktop.png');
 
@@ -202,7 +202,7 @@ async function main() {
   tab = await openTab(cdp, `${DEV_URL}/?sample=photosynthesis`, 390, 844, true);
   await waitFor(cdp, tab.sessionId, `document.querySelector('.content-input')?.value.length > 100`);
   await clickButton(cdp, tab.sessionId, 'Generate study pack');
-  await waitFor(cdp, tab.sessionId, `!!document.querySelector('.study')`);
+  await waitFor(cdp, tab.sessionId, `!!document.querySelector('.study')`, 90000); // cloud can take 16 s+ via proxy — 15 s default timed out once
   await sleep(500);
   await shot(cdp, tab.sessionId, '07-study-mobile.png');
   await closeTab(cdp, tab.targetId, tab.sessionId);
